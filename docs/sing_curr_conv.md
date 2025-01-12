@@ -9,13 +9,13 @@ H5{color:Blue;}
 # sing_curr_conv: Net Worth Change Explainer / Unrealized Gains Analyzer
 
 The **sing_curr_conv** is a tool to be used with the [beancount](https://github.com/beancount/beancount), a software for
-[plain text](https://plaintextaccounting.org/) double-entry bookkeeping. Its purpose is to explain the Net Worth difference between any two dates in a multi-currency/multi-commodity ledger. It does this by creating a converted or "equivalent" ledger, on which further analysis can be performed using standard [beanquery](https://github.com/beancount/beanquery) queries.
+[plain text](https://plaintextaccounting.org/) double-entry bookkeeping. This tool makes it possible to explain changes in the Net Worth between any two dates in a situation of multi-currency / multi-commodity ledger with changing exchange rates and transfers of funds from one commodity to another (both cost and not cost-based tracked). This is achieved by creating a converted / equivalent ledger, on which further analysis can be done using  [beanquery](https://github.com/beancount/beanquery).
 
-This documents, describes all the features of the **sing_curr_cong**.
+This document describes all the features of the **sing_curr_cong**.
 
-The Jupyter notebook [how_sing_curr_conv_works.ipynb](how_sing_curr_conv_works.ipynb) shows how these features are implemented in practice. 
+The accompanying Jupyter notebook [how_sing_curr_conv_works.ipynb](how_sing_curr_conv_works.ipynb) shows how these features are implemented in practice. 
 
-The Jupyter notebook [sing_curr_conv_usage.ipynb](sing_curr_conv_usage.ipynb) has detailed example of how the **sing_curr_conv** can be used in practice.
+The accompanying Jupyter notebook [sing_curr_conv_usage.ipynb](sing_curr_conv_usage.ipynb) has detailed example of how the **sing_curr_conv** can be used in practice.
 
 **Table of Contents**
 
@@ -23,7 +23,7 @@ The Jupyter notebook [sing_curr_conv_usage.ipynb](sing_curr_conv_usage.ipynb) ha
   - [Problem Statement](#problem-statement)
     - [Unrealized Gains](#unrealized-gains)
     - [Hidden Gains](#hidden-gains)
-  - [How Does the Single Currency Converter (SCC) Solve This?](#how-does-the-single-currency-converter-scc-solve-this)
+  - [How Does the **sing\_curr\_conv** solve This?](#how-does-the-sing_curr_conv-solve-this)
   - [Guarantees](#guarantees)
     - [Definitions](#definitions)
       - [Net Worth Report](#net-worth-report)
@@ -73,12 +73,12 @@ Consider the following simple Beancount ledger:
 2021-01-01 price HOUSE 120000 USD ; <== New house price one year later
 ```
 
-We can see that between January 1, 2020, and January 1, 2021, the Net Worth in this ledger has increased by 20,000 USD, due to the change in the house's market price.  
-Yet there is no  **beanquery** query that can explain _why_ it changed. This happens because the change is caused by a commodity price change, which leads to [unrealized gains](https://www.investopedia.com/ask/answers/04/021204.asp). Although it's easy to see the cause in this simple example, analyzing this in a more complex, real-world ledger (with multiple commodity transfers and changing exchange rates) is practically impossible.
+We can see that between January 1, 2020, and January 1, 2021, the Net Worth in this ledger increased by 20,000 USD due to the change in the house's market price.  
+However, no **beanquery** query can directly explain _why_ it changed. This is because the change is caused by a commodity price change, which leads to [unrealized gains](https://www.investopedia.com/ask/answers/04/021204.asp). Although it's easy to see the cause in this simple example, analyzing this in a more complex, real-world ledger (with multiple commodity transfers and changing exchange rates) is practically impossible.
 
 ### Hidden Gains
 
-Now consider another example, closely related to unrealized gains but slightly different:
+Now consider another example, closely related to unrealized gains but subtly different:
 
 ```beancount
 2024-01-01 open Assets:Bank
@@ -98,17 +98,17 @@ Now consider another example, closely related to unrealized gains but slightly d
 2024-01-03 price BTC  40000 USD
 ```
 
-Between January 1 and January 3, the net worth in this ledger changes from 20,000 USD to 40,000 USD, even though there is no recorded Income. This arises because the BTC was purchased at half its market price (which, by the way, raises questions about some potential shady financial operations).
+Between January 1 and January 3, the net worth in this ledger changes from 20,000 USD to 40,000 USD, despite no recorded income. This occurs because the BTC was purchased for half its market value (which, by the way, raises questions about some potential shady financial operations).
 
 Once again, there is no  **beanquery** query to explain this gain in an Income Statement-like report.
 
-## How Does the Single Currency Converter (SCC) Solve This?
+## How Does the **sing_curr_conv** solve This?
 
 The **sing_curr_conv** utility converts the original ledger into a new ledger, where:
 
 - All transactions are converted into a target currency using the exchange rate applicable on the date of each transaction.
 - Additional postings are inserted to record **hidden gains**.
-- For every price change, an "unrealized gains" transaction is inserted, reflecting the same increase in Assets and Liabilities as the price change. All unrealized gains transactions follow the double-entry accounting principle and balance to zero:
+- For every price change, an "unrealized gains" transaction is inserted, reflecting the same increase in Assets and Liabilities as the price change would cause. All unrealized gains transactions follow the double-entry accounting principle and balance to zero:
   - Some postings go to **Assets** and/or **Liabilities** account(s).
   - Other postings go to **Income:UnrealizedGains:\<Target Currency>:\<Changed Currency>** (the exact account name is configurable).
 
@@ -286,9 +286,10 @@ def get_equiv_sing_curr_entries(entries: list[NamedTuple],
                                 *,
                                 unreal_gains_p_l_acc: Account = UNREAL_GAINES_P_AND_L_ACC,
                                 self_testing_mode=False,
-                                tolerance: str = "0.001",
-                                group_p_l_acc_tr = False,
-                                shell_mode: bool = False) -> tuple[list[NamedTuple], list[NamedTuple], dict]:
+                                tolerance: str = TOLERANCE_DEF,
+                                group_p_l_acc_tr=False,
+                                shell_mode: bool = False,
+                                debug_mode: bool = False) -> tuple[list[NamedTuple], list[NamedTuple], dict]:
     """
     Convert all ledger entries to a single target currency while calculating unrealized gains.
 
@@ -316,10 +317,11 @@ def get_equiv_sing_curr_entries(entries: list[NamedTuple],
         self_testing_mode (bool, optional): If True, enables self-testing mode. Defaults to False. In self-testing mode,
             several checks are done using beanquery comparing the results on the converted and initial entries. This is
             primarily used for testing purposes but can also be enabled in production. Note: This is not used within the
-            function but is used in the decorator `check_vs_beanquery`.
+            function but is used in the decorator `check_vs_beanquery`. Experiments show, that using this option increase 
+            execution time by approximately 30%
         
         tolerance (str, optional): The tolerance used when performing verifications against the beanquery in self-testing
-            mode. Defaults to "0.001". This should be a string convertible to a Decimal. Commas are stripped and ignored,
+            mode. Defaults to "0.009". This should be a string convertible to a Decimal. Commas are stripped and ignored,
             as they are assumed to be thousands separators (the French comma separator as decimal is not supported). You
             may need to adjust this value depending on the size of your ledger, as the error can gradually build up if
             converting a large number of entries. Note: This is not used within the function but is used in the decorator
@@ -332,6 +334,9 @@ def get_equiv_sing_curr_entries(entries: list[NamedTuple],
         
         shell_mode (bool, optional): If True, the function knows that it is being called from the shell and will print
             some additional information to the console. Defaults to False.
+            
+        debug_mode (bool, optional): If True, debug logging is enabled. Defaults to False. Debug log is created in 
+            the default temporary directory of the OS(e.g. on Windows c:\temp, on Linux /tmp). 
 
     Returns:
         tuple: A tuple containing:

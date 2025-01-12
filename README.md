@@ -24,7 +24,7 @@ At the moment this is very much work in progress. Below are mentioned the compon
 ## Installation
 
 ```
-pip install https://github.com/Ev2geny/evbeantools.git
+pip install git+https://github.com/Ev2geny/evbeantools.git
 ```
 
 Notes:
@@ -39,7 +39,7 @@ For installation for development refer to the [CONTRIBUTING.md](docs/CONTRIBUTIN
 
 ### sing_curr_conv: Neth Worth Change explainer / Unrealized Gains analyzer
 
-This tool makes it possible to explain changes in net worth between any two dates in a situation of multi-currency / multi-commodity ledger with changing exchange rates and transfers of funds from one commodity to another (both cost and not cost-based tracked). This is achieved by creating a converted / equivalent ledger, on which further analysis can be done using  [beanquery](https://github.com/beancount/beanquery).
+This tool makes it possible to explain changes in the Net Worth between any two dates in a situation of multi-currency / multi-commodity ledger with changing exchange rates and transfers of funds from one commodity to another (both cost and not cost-based tracked). This is achieved by creating a converted / equivalent ledger, on which further analysis can be done using  [beanquery](https://github.com/beancount/beanquery).
 
 The tool can be used 
 
@@ -47,4 +47,4 @@ The tool can be used
 * as a function in Python code
 * as a plugin
 
-See more information in the [sing_curr_conv documentation](docs/sing_curr_conv.md).
+See more information in the [**sing_curr_conv** documentation](docs/sing_curr_conv.md).

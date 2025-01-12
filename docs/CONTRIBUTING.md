@@ -3,7 +3,7 @@
 clone repository
 
 ```
-git clone https://github.com/Ev2geny/beancount.git
+git clone https://github.com/Ev2geny/evbeantools.git
 ```
 
 install in development mode
