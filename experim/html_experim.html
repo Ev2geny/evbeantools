@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Experiments</title>
+    <style>
+        .beancount-entry {
+            font-family: monospace;
+            white-space: pre;
+        }
+
+        .date {
+            color: green;
+        }
+
+        .account {
+            color: blue;
+        }
+
+        .narration {
+            color: brown;
+        }
+
+        .payee {
+            color: brown;
+        }
+
+        .amount {
+            color: green;
+        }
+
+        .cost {
+            color: green;
+        }
+
+        .position {
+            color: MediumOrchid;
+        }
+
+        .commodity {
+            color: MediumOrchid;
+        }
+
+        .meta-name {
+            color: gray;
+            font-weight: bold;
+        }
+
+        .meta-value {
+            color: gray;
+
+        }
+    </style>
+</head>
+
+<body>
+    <pre>
+<span class="date">2020-01-01</span> open <span class="account">Assets:Bank</span>
+<span class="date">2020-01-01</span> open <span class="account">Equity:Opening-Balances</span>
+
+<span class="date">2020-01-03</span> price <span class="commodity">AAA</span> <span class="amount">1.5</span> <span class="commodity">BBB</span>
+
+<span class="date">2020-01-01</span> * <span class="narration">"Opening Balance"</span>
+  <span class="account">Assets:Bank</span>              <span class="amount">100.0</span> <span class="commodity">BBB</span>
+    <span class="meta-name">scc_msg:</span> <span class="meta-value">"Converted from 100 AAA"</span>
+  <span class="account">Equity:Opening-Balances</span> <span class="amount">-100.0</span> <span class="commodity">BBB</span>
+    <span class="meta-name">scc_msg:</span> <span class="meta-value">"Converted from -100 AAA"</span>
+
+<span class="date">2020-02-01</span> open <span class="account">Income:Unrealized-Gains:BBB-AAA</span>
+
+<span class="date">2020-02-01</span> * <span class="narration">"Unrealized gains due to AAA price change from 1.0 to 2.0 BBB (BBB price change from 1 to 0.5 AAA)"</span>
+  <span class="meta-name">scc_msg:</span> <span class="meta-value">"Created by the Single Currency Converter"<span>
+  <span class="account">Assets:Bank</span>                      <span class="amount">100.0</span> <span class="commodity">BBB</span>
+    <span class="meta-name">scc_msg:</span> <span class="meta-value">"Calculated on the balance of 100 AAA at the beginning of this day (end of prev. day)"</span>
+    <span class="meta-name">scc_at_cost:</span> <span class="meta-value">"no_cost"</span>
+    <span class="meta-name">scc_unreal_g_cause:</span> <span class="meta-value">"price_change"</span>
+  <span class="account">Income:Unrealized-Gains:BBB-AAA</span> <span class="amount">-100.0</span> <span class="commodity">BBB</span>
+    scc_msg: "Calculated on the balance of 100 AAA at the beginning of this day (end of prev. day)"
+    scc_at_cost: "no_cost"
+    scc_unreal_g_cause: "price_change"
+    scc_bal_s_acc: "Assets:Bank"
+
+<span class="date">2017-03-27</span> * <span class="narration">"Investing in VBMPX. Detailed position formatting"</span>
+    <span class="account">Assets:US:Vanguard:VBMPX</span> <span class="amount">2.533</span> <span class="commodity">VBMPX</span> {<span class="amount">189.47</span> <span class="commodity">USD</span>, <span class="date">2017-03-27</span>}
+    Assets:US:Vanguard:Cash -479.93 USD
+
+<span class="date">2017-03-27</span> * <span class="narration">"Investing in VBMPX. Simple position formatting"</span>
+    <span class="account">Assets:US:Vanguard:VBMPX</span> <span class="position">2.533 VBMPX {189.47 USD, 2017-03-27}</span>
+    Assets:US:Vanguard:Cash -479.93 USD
+
+<span class="date">2017-03-27</span> * <span class="narration">"Investing in VBMPX. Detailed position formatting"</span>
+    <span class="account">Assets:US:Vanguard:VBMPX</span> <span class="amount">2.533</span> <span class="commodity">VBMPX</span> <span class="cost">{189.47 USD, 2017-03-27}</span>
+    Assets:US:Vanguard:Cash -479.93 USD
+</pre>
+</body>
+
+</html>
