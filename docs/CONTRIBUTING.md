@@ -24,3 +24,4 @@ run tests
 python -m pytest
 ```
 
+to create a pull request, create it against the branch `develop`
