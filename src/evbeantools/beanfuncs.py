@@ -1,14 +1,20 @@
-# importting namedtuple
+import copy
 from collections import namedtuple
 from typing import NamedTuple
 from datetime import date
+import io
+import textwrap
 
 from beancount.loader import load_file
 from beancount.parser import printer
 from beancount.parser import options
 import beancount
+from beancount.core.data import Transaction, Posting, Cost, Account
+from beancount.parser import printer
 
 from evbeantools.utils import check_convert_date
+
+POSTING_SPLITTER_META = "posting_splitter"
 
 def check_funds_in_transit(entries,
                            from_account: str,
@@ -162,4 +168,157 @@ def check_mult_funds_in_transit(entries: list,
     
     return errors
         
-         
+        
+from decimal import Decimal
+from beancount.core.data import Transaction, Posting, Amount, Account
+
+
+def split_posting(transaction: Transaction,
+                  posting: Posting,
+                  splitting_info: tuple[tuple[str, Account]]):
+    """
+    Splits a posting in transaction into multiple postings based on the splitting_info provided.
+
+    Args:
+        transaction (Transaction): The transaction to split.
+        posting (Posting): The posting to split.
+        splitting_info (tuple[tuple[str, Account]]): A tuple of tuples, containing information on how
+            to split the posting. Each inner tuple should be of the form:
+                (split_amount_str, account),
+            where:
+                - split_amount_str (str) can be:
+                    - '[number]%': e.g. '50%', representing a percentage of the original posting's amount.
+                    - '[number]': e.g. '12.90', a fixed amount (will be parsed with Decimal).
+                    - '_rest': Special keyword indicating "the remaining balance".
+                - account (Account): The beancount account to which the split portion will be posted.
+
+    Returns:
+        None: The transaction is modified in place (the original posting is removed,
+              and new postings are appended to transaction.postings).
+    """
+    
+    def check_remainder_sign_did_not_change(original_amount, remainder_amount):
+        """
+        Checks that the remainder amount has the same sign as the original amount.
+        If the sign has changed, raises a RuntimeError.
+        """
+        
+        if original_amount * remainder_amount > Decimal("0"):
+            return 
+
+        transation_str = printer.format_entry(transaction)
+        
+        error_str = f"""
+        Error occured while splitting the posting in the transaction:
+        
+        {transation_str}
+        
+        By using the following splitting_info:
+        
+        {splitting_info}
+        
+        Total split amount exceeds the original amount by {remainder_amount}
+        """
+        transation_str = textwrap.dedent(transation_str)
+        
+        raise RuntimeError(error_str)
+    
+        
+    
+    
+    posting_index = transaction.postings.index(posting)
+    
+
+    original_amount = posting.units.number  # The numeric portion (Decimal) of the original posting
+    currency = posting.units.currency       # The currency of the original posting
+
+    # We will accumulate how much has been split so far
+    allocated_amount = Decimal("0")
+
+    # Collect the newly created postings here
+    new_postings = []
+
+    # creating a new posting, equivalent to the original posting, but with the opposite sign
+    
+    reversed_units = Amount(-posting.units.number, posting.units.currency)
+    
+    reversed_posting = Posting(
+        account=posting.account,
+        units=reversed_units,
+        cost=posting.cost,
+        price=posting.price,
+        flag=posting.flag,
+        meta=copy.copy(posting.meta) or {}
+    )
+    
+    reversed_posting.meta[POSTING_SPLITTER_META] = "reversed posting being split"
+    
+    new_postings.append(reversed_posting)
+
+    rest_found_flag = False
+
+    # Parse the split instructions
+    for index, (split_str, split_account) in enumerate(splitting_info):
+        if split_str == "_rest":
+            # Whatever is left from the original amount
+            if index != len(splitting_info) - 1:
+                raise ValueError("The '_rest' keyword must be used only in the last split.")
+            
+            split_value = original_amount - allocated_amount
+            
+            check_remainder_sign_did_not_change(original_amount, split_value)
+                
+            
+            rest_found_flag = True
+            
+        elif split_str.endswith("%"):
+            # Split by percentage
+            percentage = Decimal(split_str[:-1]) / Decimal("100")
+            split_value = original_amount * percentage
+        else:
+            # Fixed decimal amount
+            split_value = Decimal(split_str)
+
+        allocated_amount += split_value
+
+        # Create a new posting with the split portion
+        
+        new_posting = Posting(
+            account=split_account,
+            units=Amount(split_value, currency),
+            cost=posting.cost,
+            price=posting.price,
+            flag=posting.flag,
+            meta=copy.copy(posting.meta) or {}
+        )
+        
+        new_posting.meta[POSTING_SPLITTER_META] = f"split from `{posting.account}` based on the rule: `{split_str}` `{split_account}` "
+        
+        new_postings.append(new_posting)
+        
+    if not rest_found_flag and allocated_amount != original_amount:
+        silent_remainder = original_amount - allocated_amount
+        new_posting = Posting(
+            account=posting.account,
+            units=Amount(silent_remainder, currency),
+            cost=posting.cost,
+            price=posting.price,
+            flag=posting.flag,
+            meta=copy.copy(posting.meta) or {}
+        )
+        
+        check_remainder_sign_did_not_change(original_amount, silent_remainder)
+        
+        new_posting.meta[POSTING_SPLITTER_META] = f"silent remainder from `{posting.account}`"
+        
+        new_postings.append(new_posting)
+
+
+    # Remove the original posting from the transaction
+    # transaction.postings.remove(posting)
+
+    # Inserrting the new postings straight after the original posting
+    transaction.postings[posting_index+1:posting_index+1] = new_postings
+    
+
+

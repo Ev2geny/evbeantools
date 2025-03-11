@@ -51,7 +51,8 @@ def add_total(df: pd.DataFrame,
               column_totals=True,
               row_totals=False,
               col_name_to_add_to: str | None = None,
-              row_name_to_add_to: str | None = None) -> pd.DataFrame:
+              row_name_to_add_to: str | None = None,
+              col_total_name = 'Total') -> pd.DataFrame:
     """
     Adds totals to the dataframe
     Args:
@@ -72,7 +73,7 @@ def add_total(df: pd.DataFrame,
         total_row = total_row.fillna('')
         if col_name_to_add_to is None:
             # Set index to 'Total'
-            total_row.name = 'Total'
+            total_row.name = col_total_name
             df = pd.concat([df, total_row.to_frame().T])
         else:
             # Set the value in col_name_to_add_to to 'Total'
@@ -257,9 +258,10 @@ def inv_agg_to_df(inv_agg: InventoryAggregator,
         return pd.DataFrame(rows_lst, columns=columns)
     
     
-def get_net_worths(entries, opts, dates: Iterable, target_currency: str):
+def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc_components_from_root: int = 100) -> pd.DataFrame:
     
-    bean_summator = BeanSummator(entries, opts, "Assets|Liabilities")
+    bean_summator = BeanSummator(entries, opts, "Assets|Liabilities",
+                                 num_acc_components_from_root = num_acc_components_from_root)
     
     # building price map from entries
 
