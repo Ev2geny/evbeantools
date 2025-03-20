@@ -45,6 +45,6 @@ The tool can be used
 
 * from a command line
 * as a function in Python code
-* as a plugin
+* as a beancount plugin
 
 See more information in the [**sing_curr_conv** documentation](docs/sing_curr_conv.md).
