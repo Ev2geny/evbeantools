@@ -288,9 +288,7 @@ class Test_split_posting(unittest.TestCase):
                                         )
                                     )
                     
- 
-        
-        
+    
 if __name__ == '__main__':
     test_split_posting = Test_split_posting()
     

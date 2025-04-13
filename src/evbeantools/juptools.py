@@ -260,7 +260,12 @@ def inv_agg_to_df(inv_agg: InventoryAggregator,
     
 def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc_components_from_root: int = 100) -> pd.DataFrame:
     
-    bean_summator = BeanSummator(entries, opts, "Assets|Liabilities",
+    # print("get_net_worths is running")
+    
+    name_assets = opts['name_assets']
+    name_liabilities = opts['name_liabilities']
+    
+    bean_summator = BeanSummator(entries, opts, f"{name_assets}|{name_liabilities}",
                                  num_acc_components_from_root = num_acc_components_from_root)
     
     # building price map from entries
@@ -274,8 +279,6 @@ def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc
     # net_worth = get_net_worth(entries, opts, date, currency)
     
     net_worths = pd.DataFrame()
-    
-    # print(f"net_worth = {net_worth}")
     
     for date in dates_intern:
         # net_worth = net_worth.append(get_net_worth(entries, errors, opts, date, currency), ignore_index=True)
@@ -295,7 +298,7 @@ def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc
     # print('net_worths')
     # print(net_worths)
     
-    pivot=get_bean_pivot(net_worths, column='q_date',max_row_levels=10,repeat_row_labels=True)
+    pivot=get_bean_pivot(net_worths, column='q_date',max_row_levels=10, repeat_row_labels=True)
     
     return pivot
 
@@ -658,6 +661,63 @@ def remove_empty_rows(df:pd.DataFrame, threshold:float = 0.0)->pd.DataFrame:
     
     return df[~rows_to_remove_series]
     
+    
+def get_period_end_dates(start_period:pd.Period, end_period:pd.Period) -> list[datetime.date]:
+    """
+    Function returns the list of the end dates of the periods between start_period and end_period.
+    
+    return: list of the end dates of the periods between start_period and end_period.
+    """
+    periods = pd.period_range(start=start_period, end=end_period, freq=start_period.freq)
+    
+    end_dates = [p.end_time.date() for p in periods]
+    
+    return end_dates
+
+# pd.io.formats.style.Styler
+
+def highlight_rows(df: pd.DataFrame, row_color_map: dict[str, str]):
+    """
+    Function to highlight rows in a DataFrame based on a dictionary of row names and colors.
+    Args:
+        df (pd.DataFrame): DataFrame to be styled.
+        row_color_map (dict): Dictionary where keys are row names and values are colors. E.g.:
+            {
+                "row_name_1": "red",
+                "row_name_2": "blue",
+                ...
+            }
+    Returns:
+        pd.io.formats.style.Styler: A Styler object with the applied styles.
+    """
+
+    styler = df.style
+
+    def highlight_func(row):
+        # Return the style strings for each cell in row
+        row_styles = []
+        if row.name in row_color_map:
+            # highlight with the specified color
+            color = row_color_map[row.name]
+            row_styles = [f'background-color: {color}'] * len(row)
+        else:
+            row_styles = [''] * len(row)
+        return row_styles
+
+    def highlight_index_func(index_labels):
+        return [
+            f'background-color: {row_color_map[label]}' if label in row_color_map else ''
+            for label in index_labels
+        ]
+
+    styler = (
+        styler
+        .apply(highlight_func, axis=1)
+        .apply_index(highlight_index_func, axis=0)
+        .format("{:,.2f}")
+    )
+    return styler
+
 
 def main():
     data = {'indexcol':['row1','row2','row3'],
