@@ -258,109 +258,8 @@ def inv_agg_to_df(inv_agg: InventoryAggregator,
         return pd.DataFrame(rows_lst, columns=columns)
     
     
-def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc_components_from_root: int = 100) -> pd.DataFrame:
-    
-    # print("get_net_worths is running")
-    
-    name_assets = opts['name_assets']
-    name_liabilities = opts['name_liabilities']
-    
-    bean_summator = BeanSummator(entries, opts, f"{name_assets}|{name_liabilities}",
-                                 num_acc_components_from_root = num_acc_components_from_root)
-    
-    # building price map from entries
-
-    price_map = build_price_map(entries)
-    
-    dates_intern = list(dates)
-    # print(f"dates_intern = {dates_intern}")
-    # date = dates_intern[0]
-    # print(f"running get_net_worth for date {date}")
-    # net_worth = get_net_worth(entries, opts, date, currency)
-    
-    net_worths = pd.DataFrame()
-    
-    for date in dates_intern:
-        # net_worth = net_worth.append(get_net_worth(entries, errors, opts, date, currency), ignore_index=True)
-        net_worth: InventoryAggregator = bean_summator.sum_till_date(date).convert(target_currency, price_map, date)
-        net_worth_df: pd.DataFrame = inv_agg_to_df(net_worth)
-        # print('net_worth')
-        # print(net_worth)
-        net_worth_df['q_date'] = date
-        net_worths=pd.concat([net_worths, net_worth_df], ignore_index=True)
-        
-    # pivot=get_my_pivot(net_worth, column='q_date', rows='account')
-    
-    # print(net_worth.head())
-    
-    net_worths = convert_columns_to_float(net_worths)
-    
-    # print('net_worths')
-    # print(net_worths)
-    
-    pivot=get_bean_pivot(net_worths, column='q_date',max_row_levels=10, repeat_row_labels=True)
-    
-    return pivot
-
-
-def check_presence_of_column_in_dataframe(df:pd.DataFrame, column):
-    """
-    Verifies whether a specified column or a column matching a given pattern exists within a pandas DataFrame. 
-    This function supports both standard and MultiIndex column DataFrames. For MultiIndex DataFrames, it provides 
-    additional functionality to suggest a possible matching column if the specified column name does not directly 
-    match but is similar to an element within the MultiIndex columns.
-
-    Parameters:
-    - df (pd.DataFrame): The DataFrame to check for the specified column.
-    - column (str or tuple): The column name or pattern to check for. This should be a string for standard DataFrame 
-      columns or a tuple for MultiIndex DataFrame columns.
-
-    Returns:
-    - None: The function returns None if the specified column exists within the DataFrame, indicating success.
-
-    Raises:
-    - ValueError: If the specified column does not exist within the DataFrame. The error message details whether the 
-      DataFrame has MultiIndex columns and the column was expected to be a tuple but was not, including a suggestion 
-      for a possibly intended column if a close match is found within the MultiIndex columns. If no close match is 
-      found, or the DataFrame does not use MultiIndex columns, a generic error message indicating the absence of the 
-      specified column is raised.
-
-    Notes:
-    - For MultiIndex columns, the function attempts to identify a close match by searching each level of the MultiIndex 
-      for the specified column name or a pattern match. If a potential match is found, it suggests this match in the 
-      raised ValueError.
-    - This function is useful for data validation and error handling when working with DataFrames of varying complexity,
-      ensuring that operations relying on specific columns can proceed safely.
-    """
-    
-    columns=df.columns
-    
-    # print('columns.values')
-    # print(list(columns.values))
-    
-    if column in list(columns.values):
-        return 
-    
-    # checking whether columns is a multiindex
-    if isinstance(columns, pd.MultiIndex) and not isinstance(column, tuple):
-        
-        possibly_meant_column_to_pick=None
-        for multiindex_value in columns.values:
-            for element in multiindex_value:
-                if element == column or re.match(str(column), str(element)):
-                    possibly_meant_column_to_pick = multiindex_value
-                    break
-        error_message = f"columns of the input dataframe is a MultiIndex object \n\n {columns} \n\n but the parameter 'column_to_pick' \n\n {column} \n\n is not a Tupe as expected in this case"
-        
-        if possibly_meant_column_to_pick:
-            error_message+=f"\n Did you mean to pick the following column? \n {possibly_meant_column_to_pick}"        
-                
-        raise ValueError(error_message)
-    
-    raise ValueError(f"column = {column} is not present in the dataframe columns = {columns}")
-
-
 def get_bean_pivot(df,
+                   *,
                    column: str = 'year',
                    max_row_levels=1,
                    sort_by=None,
@@ -375,27 +274,36 @@ def get_bean_pivot(df,
     account hierarchies into multiple levels and summing up the values under a specified column. It offers options to 
     sort the results, limit the depth of row level hierarchies, and repeat row labels for clarity.
     
-    Parameters:
-    - df : The input DataFrame containing the data to be pivoted.
-    - column (str, optional): The column name to use as the pivot table columns. Defaults to 'year'.
-    - max_row_levels (int, optional): The maximum number of hierarchical levels to include in the pivot table rows. Defaults to 1.
-    - sort_by (tuple, optional): A tuple specifying the column(s) to sort the pivot table by. Defaults to None, which means no sorting.
-    - drop_identical_row_levels (bool, optional): Whether to drop initial row levels if they are identical across the dataset,
-      to simplify the pivot table. Defaults to True.
-    - repeat_row_labels (bool, optional): Whether to repeat row labels when the pivot table is reset. Useful for clarity in
-      the final table. Defaults to False.
-    - values (str, optional): The column name to aggregate in the pivot table, specified as a regex pattern. Defaults to "amount".
-    
-    Returns:
-    pd.DataFrame: A pivot table generated from the input DataFrame according to the specified parameters.
-    
-    Raises:
-    ValueError: If no columns in the DataFrame match the regex specified in the 'values' parameter.
-    
-    Notes:
     The function assumes the presence of an 'account' column in the input DataFrame, which is used to split the account
     information into hierarchical levels for the pivot table rows. The values in the 'account' column are expected to be
     delimited by colons (:).
+    
+    Parameters:
+    - df : The input DataFrame containing the data to be pivoted.
+    
+    - column (str, optional): The column name to use as the pivot table columns. Defaults to 'year'.
+    
+    - max_row_levels (int, optional): The maximum number of hierarchical levels to include in the pivot table rows. 
+      Defaults to 1.
+      
+    - sort_by (tuple, optional): A tuple specifying the column(s) to sort the pivot table by. 
+      Defaults to None, which means no sorting.
+    
+    - drop_identical_row_levels (bool, optional): Whether to drop initial row levels if they are identical across the dataset,
+      to simplify the pivot table. Defaults to True.
+    
+    - repeat_row_labels (bool, optional): Whether to repeat row labels when the pivot table is reset. 
+      Useful for clarity in the final table. Defaults to False.
+    
+    - values (str, optional): The column name to aggregate in the pivot table, specified as a regex pattern. 
+      Defaults to "amount".
+    
+    Returns:
+        pd.DataFrame: A pivot table generated from the input DataFrame according to the specified parameters.
+    
+    Raises:
+        ValueError: If no columns in the DataFrame match the regex specified in the 'values' parameter.
+
     """
     df = df.copy()
     
@@ -460,6 +368,108 @@ def get_bean_pivot(df,
     
     
     return df_pivot
+
+    
+def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc_components_from_root: int = 100, repeat_row_labels = True) -> pd.DataFrame:
+    
+    # print("get_net_worths is running")
+    
+    name_assets = opts['name_assets']
+    name_liabilities = opts['name_liabilities']
+    
+    bean_summator = BeanSummator(entries, opts, f"{name_assets}|{name_liabilities}",
+                                 num_acc_components_from_root = num_acc_components_from_root)
+    
+    # building price map from entries
+
+    price_map = build_price_map(entries)
+    
+    dates_intern = list(dates)
+    # print(f"dates_intern = {dates_intern}")
+    # date = dates_intern[0]
+    # print(f"running get_net_worth for date {date}")
+    # net_worth = get_net_worth(entries, opts, date, currency)
+    
+    net_worths = pd.DataFrame()
+    
+    for date in dates_intern:
+        # net_worth = net_worth.append(get_net_worth(entries, errors, opts, date, currency), ignore_index=True)
+        net_worth: InventoryAggregator = bean_summator.sum_till_date(date).convert(target_currency, price_map, date)
+        net_worth_df: pd.DataFrame = inv_agg_to_df(net_worth)
+        # print('net_worth')
+        # print(net_worth)
+        net_worth_df['q_date'] = date
+        net_worths=pd.concat([net_worths, net_worth_df], ignore_index=True)
+        
+    # pivot=get_my_pivot(net_worth, column='q_date', rows='account')
+    
+    # print(net_worth.head())
+    
+    net_worths = convert_columns_to_float(net_worths)
+    
+    # print('net_worths')
+    # print(net_worths)
+    
+    pivot=get_bean_pivot(net_worths, column='q_date',max_row_levels=10, repeat_row_labels=repeat_row_labels)
+    
+    return pivot
+
+
+def check_presence_of_column_in_dataframe(df:pd.DataFrame, column):
+    """
+    Verifies whether a specified column or a column matching a given pattern exists within a pandas DataFrame. 
+    This function supports both standard and MultiIndex column DataFrames. For MultiIndex DataFrames, it provides 
+    additional functionality to suggest a possible matching column if the specified column name does not directly 
+    match but is similar to an element within the MultiIndex columns.
+
+    Parameters:
+    - df (pd.DataFrame): The DataFrame to check for the specified column.
+    - column (str or tuple): The column name or pattern to check for. This should be a string for standard DataFrame 
+      columns or a tuple for MultiIndex DataFrame columns.
+
+    Returns:
+    - None: The function returns None if the specified column exists within the DataFrame, indicating success.
+
+    Raises:
+    - ValueError: If the specified column does not exist within the DataFrame. The error message details whether the 
+      DataFrame has MultiIndex columns and the column was expected to be a tuple but was not, including a suggestion 
+      for a possibly intended column if a close match is found within the MultiIndex columns. If no close match is 
+      found, or the DataFrame does not use MultiIndex columns, a generic error message indicating the absence of the 
+      specified column is raised.
+
+    Notes:
+    - For MultiIndex columns, the function attempts to identify a close match by searching each level of the MultiIndex 
+      for the specified column name or a pattern match. If a potential match is found, it suggests this match in the 
+      raised ValueError.
+    - This function is useful for data validation and error handling when working with DataFrames of varying complexity,
+      ensuring that operations relying on specific columns can proceed safely.
+    """
+    
+    columns=df.columns
+    
+    # print('columns.values')
+    # print(list(columns.values))
+    
+    if column in list(columns.values):
+        return 
+    
+    # checking whether columns is a multiindex
+    if isinstance(columns, pd.MultiIndex) and not isinstance(column, tuple):
+        
+        possibly_meant_column_to_pick=None
+        for multiindex_value in columns.values:
+            for element in multiindex_value:
+                if element == column or re.match(str(column), str(element)):
+                    possibly_meant_column_to_pick = multiindex_value
+                    break
+        error_message = f"columns of the input dataframe is a MultiIndex object \n\n {columns} \n\n but the parameter 'column_to_pick' \n\n {column} \n\n is not a Tupe as expected in this case"
+        
+        if possibly_meant_column_to_pick:
+            error_message+=f"\n Did you mean to pick the following column? \n {possibly_meant_column_to_pick}"        
+                
+        raise ValueError(error_message)
+    
+    raise ValueError(f"column = {column} is not present in the dataframe columns = {columns}")
 
 
 def generate_unique_el(el:Any, existing_els:set, uniquelizetor:str='+')->str:
