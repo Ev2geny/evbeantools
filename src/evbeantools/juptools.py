@@ -415,6 +415,7 @@ def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc
     return pivot
 
 
+#TODO: verify that this function works with multiindex columns, as I had to disable it
 def check_presence_of_column_in_dataframe(df:pd.DataFrame, column):
     """
     Verifies whether a specified column or a column matching a given pattern exists within a pandas DataFrame. 
@@ -558,7 +559,7 @@ def prepare_sunburst_data_input(df, column_to_pick, fix_data=True):
     columns=df.columns
     
     # checking whether columns is a multiindex
-    check_presence_of_column_in_dataframe(df, column_to_pick)
+    # check_presence_of_column_in_dataframe(df, column_to_pick)
     
     # print(df)
     
