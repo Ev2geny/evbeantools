@@ -8,6 +8,7 @@ import re
 from collections.abc import Iterable
 from typing import Union, List, Tuple, Dict, Any, Optional, Callable, TypeVar, Generic, Type, cast, overload
 from pprint import pprint
+from collections import defaultdict
 
 import pandas as pd
 import numpy as np
@@ -733,66 +734,49 @@ def highlight_rows(df: pd.DataFrame, row_color_map: dict[str, str]):
     return styler
 
 
-
 def _safe_label(label: Any, parent_label: str) -> str:
-    """Return a *visual* label for Plotly.
+    """Return a human‑readable label unique within its parent scope.
 
-    If the original value is the placeholder "_" (used when a level is
-    missing), rename it to ``{parent}_`` so that the user can still recognise
-    the branch while keeping the label unique inside the parent scope.
+    If *label* equals "_", turn it into ``{parent_label}_`` (or simply "_" at
+    root level) so that multiple placeholder children can coexist without name
+    clashes.
     """
     if label == "_":
         return f"{parent_label}_" if parent_label else "_"
     return str(label)
 
 
-def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:
-    """Convert a *Series* with a (possibly ragged) *MultiIndex* into a flat list
-    of Plotly‑compatible node dictionaries (``id``, ``label``, ``parent``,
-    ``value``).
+# ---------------------------------------------------------------------------
+# Pass 1 – raw aggregation (truncate placeholder tails)
+# ---------------------------------------------------------------------------
 
-    The function is **placeholder‑aware**: once the first placeholder level (a
-    raw label equal to the string "_") is reached inside a path, **all deeper
-    levels are ignored**. This prevents pathological cases where every branch
-    is padded with the *same* sequence of placeholders, which would otherwise
-    yield a Sunburst in which *all* visible sectors share the same depth and
-    convey no additional information.
-    """
+def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:
+    """Aggregate *series* values into Plotly‑ready nodes, stopping a path at the
+    first placeholder level ("_")."""
 
     node_pool: Dict[str, Dict[str, Any]] = {}
 
     for path, value in series.items():
-        # Ensure *path* is always a tuple for uniform processing
         if not isinstance(path, tuple):
             path = (path,)
 
         parent_id = ""
         parent_label = ""
-        placeholder_hit = False  # True after first "_" inside *this* path
-
+        prune = False
         for depth, raw_label in enumerate(path):
-            # If we have already handled the first placeholder in this path we
-            # stop traversing any deeper artificial levels.
-            if placeholder_hit:
-                break
+            if prune:
+                break  # ignore tails after the first "_"
 
-            # Convert to a display label (also used to guarantee uniqueness
-            # within a parent when *raw_label* is "_")
             label = _safe_label(raw_label, parent_label)
 
-            # Build the *id* by walking the (possibly shortened) path up to the
-            # current depth, applying the same placeholder logic to every part
-            # so that *id* and *label* remain in sync.
-            curr_parts: List[str] = []
-            tmp_parent_label = ""
-            for i, part in enumerate(path[: depth + 1]):
-                part_lbl = _safe_label(part, tmp_parent_label)
-                curr_parts.append(part_lbl)
-                tmp_parent_label = part_lbl
-            curr_id = "-".join(curr_parts)
+            # Build id based on *visual* labels to ensure uniqueness matches display
+            parts: List[str] = []
+            tmp_parent = ""
+            for part in path[: depth + 1]:
+                parts.append(_safe_label(part, tmp_parent))
+                tmp_parent = parts[-1]
+            curr_id = "-".join(parts)
 
-            # Materialise the node if it has not been seen before, otherwise
-            # only aggregate the *value*.
             if curr_id not in node_pool:
                 node_pool[curr_id] = {
                     "id": curr_id,
@@ -800,79 +784,110 @@ def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:
                     "parent": parent_id,
                     "value": 0.0,
                 }
+            node_pool[curr_id]["value"] += float(value) if pd.notna(value) else 0.0
 
-            node_pool[curr_id]["value"] += value if pd.notna(value) else 0.0
-
-            # Prepare for next iteration
             parent_id = curr_id
             parent_label = label
             if raw_label == "_":
-                placeholder_hit = True  # prune sub‑placeholders
+                prune = True
 
-    # Sort so that parents always precede children (Plotly requirement)
-    ordered_nodes = sorted(node_pool.values(), key=lambda d: (d["id"].count("-"), d["id"]))
+    return list(node_pool.values())
+
+
+# ---------------------------------------------------------------------------
+# Pass 2 – inject residual placeholders only when needed
+# ---------------------------------------------------------------------------
+
+def _inject_residual_placeholders(nodes: List[Dict[str, Any]], tol: float = 1e-9) -> List[Dict[str, Any]]:
+    """Ensure a ``parent_`` residual node exists *only* when explicit children do
+    not sum to their parent's value.
+
+    Fixes *RuntimeError* by avoiding in‑place dict mutation during iteration.
+    """
+
+    id_to_node: Dict[str, Dict[str, Any]] = {n["id"]: n for n in nodes}
+    children_map: Dict[str, List[str]] = defaultdict(list)
+    for n in nodes:
+        if n["parent"]:
+            children_map[n["parent"]].append(n["id"])
+
+    # Iterate over a *static* snapshot of parent ids to avoid modifying the
+    # dictionary while looping.
+    for parent_id in list(id_to_node.keys()):
+        parent_node = id_to_node[parent_id]
+        child_ids = children_map.get(parent_id, [])
+
+        placeholder_ids = [cid for cid in child_ids if id_to_node[cid]["label"].endswith("_")]
+        explicit_ids = [cid for cid in child_ids if cid not in placeholder_ids]
+
+        sum_explicit = sum(id_to_node[c]["value"] for c in explicit_ids)
+        residual = parent_node["value"] - sum_explicit
+
+        # Remove any pre‑existing placeholder children; we'll recreate only if needed
+        for pid in placeholder_ids:
+            id_to_node.pop(pid, None)
+        if placeholder_ids:
+            children_map[parent_id] = explicit_ids
+
+        if residual > tol:
+            placeholder_label = _safe_label("_", parent_node["label"])
+            placeholder_id = f"{parent_id}-{placeholder_label}" if parent_id else placeholder_label
+            id_to_node[placeholder_id] = {
+                "id": placeholder_id,
+                "label": placeholder_label,
+                "parent": parent_id,
+                "value": residual,
+            }
+            children_map[parent_id].append(placeholder_id)
+
+    ordered_nodes = sorted(id_to_node.values(), key=lambda d: (d["id"].count("-"), d["id"]))
     return ordered_nodes
 
 
-def get_sunburst_figure_from_pivot(
-    df: pd.DataFrame, column_to_pick: Tuple[Any, ...]
-) -> go.Figure:
-    """Build a *Sunburst* figure from a *pivot* data frame.
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
-    Parameters
-    ----------
-    df
-        A DataFrame whose **row** index is a *MultiIndex* that defines the
-        hierarchical drill‑down. The **column** index can be flat or another
-        MultiIndex. Missing levels in *rows* should be filled with the literal
-        string "_" (or left empty—``pivot_table`` often fills them for you).
-    column_to_pick
-        The exact column key that contains the numeric values to plot (e.g.
-        ``("amount (EUR)", 2021)``).
+def get_sunburst_figure_from_pivot(df: pd.DataFrame, column_to_pick: Tuple[Any, ...]) -> go.Figure:
+    """Return a Plotly *Sunburst* figure built from a pivoted DataFrame.
 
-    Notes
-    -----
-    • The function is *repeated‑label safe*: identical labels in different
-      branches are disambiguated via the *id* field while retaining a clean
-      *label*.
-    • All placeholder tails ("_", "__" …) are automatically truncated beyond
-      the first occurrence, eliminating meaningless extra rings.
+    • Truncates paths after the first placeholder ("_").
+    • Adds a residual ``parent_`` node only when needed.
     """
 
-    # 1) Select the numeric series -------------------------------------------------
+    # Select the requested column ----------------------------------------
     try:
         series = df[column_to_pick].dropna()
     except KeyError as exc:
-        raise KeyError(
-            f"column_to_pick={column_to_pick} not found in df.columns"
-        ) from exc
+        raise KeyError(f"column_to_pick={column_to_pick} not found in df.columns") from exc
 
     if not isinstance(series.index, pd.MultiIndex):
-        # Promote to a 1‑level MultiIndex for uniform downstream logic
         series.index = pd.MultiIndex.from_arrays([series.index])
 
-    # 2) Aggregate & prune placeholder tails --------------------------------------
-    nodes = _aggregate_nodes(series)
+    # Build nodes ---------------------------------------------------------
+    raw_nodes = _aggregate_nodes(series)
 
-    # 3) Build the figure ---------------------------------------------------------
-    ids = [n["id"] for n in nodes]
-    labels = [n["label"] for n in nodes]
-    parents = [n["parent"] for n in nodes]
-    values = [n["value"] for n in nodes]
+    print(f"-------raw_nodes-------------")
+    
+    pprint(raw_nodes, width=200)
 
-    fig = go.Figure(
-        go.Sunburst(
-            ids=ids,
-            labels=labels,
-            parents=parents,
-            values=values,
-            branchvalues="total",
-        )
-    )
+    final_nodes = _inject_residual_placeholders(raw_nodes)
+    
+    print(f"-------final_nodes-------------")
+    
+    pprint(final_nodes, width=200)
 
+    final_nodes = raw_nodes
+
+    # Assemble figure -----------------------------------------------------
+    ids = [n["id"] for n in final_nodes]
+    labels = [n["label"] for n in final_nodes]
+    parents = [n["parent"] for n in final_nodes]
+    values = [n["value"] for n in final_nodes]
+
+    fig = go.Figure(go.Sunburst(ids=ids, labels=labels, parents=parents, values=values, branchvalues="total"))
     fig.update_layout(margin=dict(t=30, l=0, r=0, b=0))
     return fig
-
 
 
 def main():
