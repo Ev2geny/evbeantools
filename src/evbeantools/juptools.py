@@ -739,64 +739,59 @@ def highlight_rows(df: pd.DataFrame, row_color_map: dict[str, str]):
 # ---------------------------------------------------------------------------
 
 def _safe_label(label: Any, parent_label: str) -> str:
-    """Return a human‑readable label unique within its parent scope.
-
-    If *label* equals "_", turn it into ``{parent_label}_`` (or simply "_" at
-    root level) so that multiple placeholder children can coexist without name
-    clashes.
-    """
+    """Return a human‑readable label unique within its parent scope."""
     if label == "_":
         return f"{parent_label}_" if parent_label else "_"
     return str(label)
 
 
 # ---------------------------------------------------------------------------
-# Pass 1 – raw aggregation (truncate placeholder tails + drop negatives)
+# Core builder ---------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
-def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:  # noqa: C901
+def _aggregate_nodes(
+    series: pd.Series,
+    *,
+    tolerate_negative_roots: bool = False,
+) -> List[Dict[str, Any]]:  # noqa: C901 – complex but contained
     """Aggregate *series* values into Plotly‑ready nodes.
 
-    The algorithm proceeds in two passes:
+    The algorithm: build the full tree (truncating paths after the first "_"),
+    then prune according to the *negative‑value policy*:
 
-    1. **Build** – create the complete node pool, truncating paths after the
-       first placeholder "_" exactly as in the original implementation.
-    2. **Prune** – apply the *negative‑value policy*:
-
-       * If a *root* node is negative → ``ValueError``.
-       * For every *non‑root* negative node, drop **all** direct children of
-         its parent (i.e. the negative node *and* its siblings) together with
-         their entire sub‑trees.  The parent remains.
+    * *Non‑root* negative → drop the entire sibling set (negative node plus its
+      siblings) while retaining the parent.
+    * *Root* negatives →
+        * strict mode (``tolerate_negative_roots=False``): raise
+          :class:`ValueError`.
+        * lenient mode: silently drop the root(s) and their whole sub‑trees.
     """
 
-    # ────────────────────────────────────────────────────────────────── 1. build
+    # ───────────────────────────── 1. normalise index ----------------------
     if not isinstance(series.index, pd.MultiIndex):
         series.index = pd.MultiIndex.from_arrays([series.index])
 
+    # ───────────────────────────── 2. build full node pool -----------------
     node_pool: Dict[str, Dict[str, Any]] = {}
-    path2id_cache: Dict[Tuple[Any, ...], str] = {}
 
-    for path, raw_value in series.items():
-        if not isinstance(path, tuple):
-            path = (path,)
+    for raw_path, raw_value in series.items():
+        path = raw_path if isinstance(raw_path, tuple) else (raw_path,)
 
         parent_id = ""
         parent_label = ""
-        prune_placeholder = False
+        saw_placeholder = False
         for depth, raw_label in enumerate(path):
-            if prune_placeholder:
+            if saw_placeholder:
                 break
 
             label = _safe_label(raw_label, parent_label)
-
+            # build current id deterministically from visual labels
             parts: List[str] = []
             tmp_parent = ""
             for part in path[: depth + 1]:
                 parts.append(_safe_label(part, tmp_parent))
                 tmp_parent = parts[-1]
             curr_id = "-".join(parts)
-
-            path2id_cache[path[: depth + 1]] = curr_id
 
             if curr_id not in node_pool:
                 node_pool[curr_id] = {
@@ -810,74 +805,66 @@ def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:  # noqa: C901
             parent_id = curr_id
             parent_label = label
             if raw_label == "_":
-                prune_placeholder = True
+                saw_placeholder = True
 
-    # ─────────────────────────────────────────────────────────────── 2. negative
-    # Identify negative nodes *as they appear in the pool* ----------
+    # ───────────────────────────── 3. negate‑pruning -----------------------
+    # separate negative nodes into roots vs non‑roots
     negative_nodes = [n for n in node_pool.values() if n["value"] < 0]
-    if any(n["parent"] == "" for n in negative_nodes):
-        bad_roots = [n["label"] for n in negative_nodes if n["parent"] == ""]
-        raise ValueError(
-            "Root node(s) with negative value: " + ", ".join(map(str, bad_roots))
-        )
+    root_negatives = [n for n in negative_nodes if n["parent"] == ""]
+    nonroot_negatives = [n for n in negative_nodes if n["parent"] != ""]
 
-    # Build parent → children lookup once ---------------------------
+    if root_negatives and not tolerate_negative_roots:
+        names = ", ".join(n["label"] for n in root_negatives)
+        raise ValueError(f"Root node(s) with negative value: {names}.")
+
+    # Build parent → children map once
     children_map: Dict[str, List[str]] = defaultdict(list)
     for n in node_pool.values():
         children_map[n["parent"]].append(n["id"])
 
-    # Collect IDs to drop -------------------------------------------
     to_drop: set[str] = set()
-    for neg in negative_nodes:
+
+    # 3a) drop entire branches of root negatives (lenient mode)
+    if tolerate_negative_roots:
+        for neg in root_negatives:
+            prefix = f"{neg['id']}-"
+            for node_id in node_pool.keys():
+                if node_id == neg["id"] or node_id.startswith(prefix):
+                    to_drop.add(node_id)
+
+    # 3b) drop sibling sets of each non‑root negative
+    for neg in nonroot_negatives:
         parent_id = neg["parent"]
         for child_id in children_map[parent_id]:
-            # mark the child *and its whole sub‑tree*
             prefix = f"{child_id}-"
-            for node_id in node_pool:
+            for node_id in node_pool.keys():
                 if node_id == child_id or node_id.startswith(prefix):
                     to_drop.add(node_id)
 
-    # Build final list in original insertion order ------------------
     final_nodes = [n for n in node_pool.values() if n["id"] not in to_drop]
     return final_nodes
 
 
 # ---------------------------------------------------------------------------
-# Pass 2 – cosmetic pruning of self‑children --------------------------------
+# Cosmetic pruning -----------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def prune_single_self_children(nodes: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    """Remove a node if …
-      1. it is the *only* child of its parent, **and**
-      2. its ``id`` is the parent’s id plus "‑<last‑segment‑of‑parent>_".
-
-    Parameters
-    ----------
-    nodes : list[dict]
-        Each dict has the keys ``id``, ``label``, ``parent``, ``value``.
-
-    Returns
-    -------
-    list[dict]
-        The pruned list, in the original order.
-    """
-    # 1) Build a quick lookup: parent‑id → list of child‑ids
+    """Collapse placeholder children that are the only child of a parent."""
     children_map = defaultdict(list)
     for n in nodes:
         children_map[n["parent"]].append(n["id"])
 
-    # 2) Keep or drop each node
     pruned = []
     for n in nodes:
         parent_id = n["parent"]
-        if parent_id:  # ignore roots (parent == '')
+        if parent_id:
             only_child = len(children_map[parent_id]) == 1
             last_seg = parent_id.rsplit("-", 1)[-1]
             expected = f"{parent_id}-{last_seg}_"
-            if only_child and n["id"] == expected:  # matches both criteria → drop
+            if only_child and n["id"] == expected:
                 continue
         pruned.append(n)
-
     return pruned
 
 
@@ -885,41 +872,55 @@ def prune_single_self_children(nodes: List[Dict[str, object]]) -> List[Dict[str,
 # Public API ----------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
-def get_sunburst_figure_from_pivot(df: pd.DataFrame, column_to_pick: Tuple[Any, ...]) -> go.Figure:
-    """Return a Plotly *Sunburst* figure built from a pivoted ``DataFrame``.
+def get_sunburst_figure_from_pivot(
+    df: pd.DataFrame,
+    column_to_pick: Tuple[Any, ...],
+    *,
+    strict_mode: bool = True,
+) -> go.Figure:
+    """Build a Plotly *Sunburst* figure from ``df``.
 
-    * Truncates paths after the first placeholder ("_").
-    * Adds a residual ``parent_`` node only when the sum of children values is
-      not equal to the parent value.
-    * Discards branches according to the *negative‑value policy* described in
-      :func:`_aggregate_nodes`.
+    Parameters
+    ----------
+    strict_mode : bool, default ``True``
+        * ``True``  – strict mode: any negative‑valued root raises an error.
+        * ``False`` – lenient mode: negative roots (and their branches) are
+          simply excluded from the result.
     """
 
-    # Select the requested column ----------------------------------------
     try:
         series = df[column_to_pick].dropna()
     except KeyError as exc:
         raise KeyError(f"column_to_pick={column_to_pick} not found in df.columns") from exc
 
-    # Build nodes ---------------------------------------------------------
-    raw_nodes = _aggregate_nodes(series)
+    series = series[series != 0]
 
+    raw_nodes = _aggregate_nodes(
+        series,
+        tolerate_negative_roots=not strict_mode,
+    )
     print("-------raw_nodes----------")
     pprint(raw_nodes, width=200)
 
     final_nodes = prune_single_self_children(raw_nodes)
-
     print("-------final_nodes----------")
     pprint(final_nodes, width=200)
 
-    # Assemble figure -----------------------------------------------------
     ids = [n["id"] for n in final_nodes]
     labels = [n["label"] for n in final_nodes]
     parents = [n["parent"] for n in final_nodes]
     values = [n["value"] for n in final_nodes]
 
-    fig = go.Figure(go.Sunburst(ids=ids, labels=labels, parents=parents, values=values, branchvalues="total"))
-    return fig
+    return go.Figure(
+        go.Sunburst(
+            ids=ids,
+            labels=labels,
+            parents=parents,
+            values=values,
+            branchvalues="total",
+        )
+    )
+
 
 
 def main():
