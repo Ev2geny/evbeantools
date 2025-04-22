@@ -754,72 +754,49 @@ def _safe_label(label: Any, parent_label: str) -> str:
 # Pass 1 – raw aggregation (truncate placeholder tails + drop negatives)
 # ---------------------------------------------------------------------------
 
-def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:  # noqa: C901 – a bit long but still readable
-    """Aggregate *series* values into Plotly‑ready nodes, stopping a path at the
-    first placeholder level ("_") **and** coping with *negative* values.
+def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:  # noqa: C901
+    """Aggregate *series* values into Plotly‑ready nodes.
 
-    **Negative‑value policy**
-    ------------------------
-    * If a *non‑root* node carries a negative value, its *entire* sub‑tree is
-      discarded **and** all other direct children of the same parent are
-      discarded as well. The parent itself *is kept*.
-    * If a *root‑level* node (i.e. a path of length 1) is negative, a
-      :class:`ValueError` is raised – a sunburst cannot be built around a root
-      with negative mass.
+    The algorithm proceeds in two passes:
+
+    1. **Build** – create the complete node pool, truncating paths after the
+       first placeholder "_" exactly as in the original implementation.
+    2. **Prune** – apply the *negative‑value policy*:
+
+       * If a *root* node is negative → ``ValueError``.
+       * For every *non‑root* negative node, drop **all** direct children of
+         its parent (i.e. the negative node *and* its siblings) together with
+         their entire sub‑trees.  The parent remains.
     """
 
-    # 0) Normalise the index into tuples so that we can work uniformly --------
+    # ────────────────────────────────────────────────────────────────── 1. build
     if not isinstance(series.index, pd.MultiIndex):
         series.index = pd.MultiIndex.from_arrays([series.index])
 
-    # 1) Collect paths that point to *negative* values -----------------------
-    negative_paths: List[Tuple[Any, ...]] = []
-    for raw_path, val in series.items():
-        path = raw_path if isinstance(raw_path, tuple) else (raw_path,)
-        if pd.notna(val) and float(val) < 0:
-            if len(path) == 1:  # root level – invalid
-                raise ValueError(
-                    f"Root node {path[0]!r} has a negative value ({val}); cannot build sunburst.")
-            negative_paths.append(path)
-
-    # 2) Helper – decide whether to *skip* a given path ----------------------
-    def _skip(path: Tuple[Any, ...]) -> bool:
-        """Return *True* if *path* must be skipped according to the rules."""
-        for neg in negative_paths:
-            parent_path = neg[:-1]
-            # 2a) the NEGATIVE node itself, or any descendant of it ----------
-            if path[: len(neg)] == neg:
-                return True
-            # 2b) *any* other direct child of its parent ---------------------
-            if path[:-1] == parent_path:
-                return True
-        return False
-
-    # 3) Build the *node_pool* like before, but ignoring skipped paths -------
     node_pool: Dict[str, Dict[str, Any]] = {}
+    path2id_cache: Dict[Tuple[Any, ...], str] = {}
 
-    for raw_path, raw_value in series.items():
-        path = raw_path if isinstance(raw_path, tuple) else (raw_path,)
-
-        if _skip(path):
-            continue  # negative branch – ignore completely
+    for path, raw_value in series.items():
+        if not isinstance(path, tuple):
+            path = (path,)
 
         parent_id = ""
         parent_label = ""
-        prune = False
+        prune_placeholder = False
         for depth, raw_label in enumerate(path):
-            if prune:
-                break  # ignore tails after the first "_"
+            if prune_placeholder:
+                break
 
             label = _safe_label(raw_label, parent_label)
 
-            # Build id based on *visual* labels to ensure uniqueness matches display
             parts: List[str] = []
             tmp_parent = ""
             for part in path[: depth + 1]:
                 parts.append(_safe_label(part, tmp_parent))
                 tmp_parent = parts[-1]
             curr_id = "-".join(parts)
+
+            path2id_cache[path[: depth + 1]] = curr_id
 
             if curr_id not in node_pool:
                 node_pool[curr_id] = {
@@ -833,9 +810,36 @@ def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:  # noqa: C901 �
             parent_id = curr_id
             parent_label = label
             if raw_label == "_":
-                prune = True
+                prune_placeholder = True
 
-    return list(node_pool.values())
+    # ─────────────────────────────────────────────────────────────── 2. negative
+    # Identify negative nodes *as they appear in the pool* ----------
+    negative_nodes = [n for n in node_pool.values() if n["value"] < 0]
+    if any(n["parent"] == "" for n in negative_nodes):
+        bad_roots = [n["label"] for n in negative_nodes if n["parent"] == ""]
+        raise ValueError(
+            "Root node(s) with negative value: " + ", ".join(map(str, bad_roots))
+        )
+
+    # Build parent → children lookup once ---------------------------
+    children_map: Dict[str, List[str]] = defaultdict(list)
+    for n in node_pool.values():
+        children_map[n["parent"]].append(n["id"])
+
+    # Collect IDs to drop -------------------------------------------
+    to_drop: set[str] = set()
+    for neg in negative_nodes:
+        parent_id = neg["parent"]
+        for child_id in children_map[parent_id]:
+            # mark the child *and its whole sub‑tree*
+            prefix = f"{child_id}-"
+            for node_id in node_pool:
+                if node_id == child_id or node_id.startswith(prefix):
+                    to_drop.add(node_id)
+
+    # Build final list in original insertion order ------------------
+    final_nodes = [n for n in node_pool.values() if n["id"] not in to_drop]
+    return final_nodes
 
 
 # ---------------------------------------------------------------------------
