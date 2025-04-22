@@ -751,18 +751,58 @@ def _safe_label(label: Any, parent_label: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Pass 1 – raw aggregation (truncate placeholder tails)
+# Pass 1 – raw aggregation (truncate placeholder tails + drop negatives)
 # ---------------------------------------------------------------------------
 
-def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:
+def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:  # noqa: C901 – a bit long but still readable
     """Aggregate *series* values into Plotly‑ready nodes, stopping a path at the
-    first placeholder level ("_")."""
+    first placeholder level ("_") **and** coping with *negative* values.
 
+    **Negative‑value policy**
+    ------------------------
+    * If a *non‑root* node carries a negative value, its *entire* sub‑tree is
+      discarded **and** all other direct children of the same parent are
+      discarded as well. The parent itself *is kept*.
+    * If a *root‑level* node (i.e. a path of length 1) is negative, a
+      :class:`ValueError` is raised – a sunburst cannot be built around a root
+      with negative mass.
+    """
+
+    # 0) Normalise the index into tuples so that we can work uniformly --------
+    if not isinstance(series.index, pd.MultiIndex):
+        series.index = pd.MultiIndex.from_arrays([series.index])
+
+    # 1) Collect paths that point to *negative* values -----------------------
+    negative_paths: List[Tuple[Any, ...]] = []
+    for raw_path, val in series.items():
+        path = raw_path if isinstance(raw_path, tuple) else (raw_path,)
+        if pd.notna(val) and float(val) < 0:
+            if len(path) == 1:  # root level – invalid
+                raise ValueError(
+                    f"Root node {path[0]!r} has a negative value ({val}); cannot build sunburst.")
+            negative_paths.append(path)
+
+    # 2) Helper – decide whether to *skip* a given path ----------------------
+    def _skip(path: Tuple[Any, ...]) -> bool:
+        """Return *True* if *path* must be skipped according to the rules."""
+        for neg in negative_paths:
+            parent_path = neg[:-1]
+            # 2a) the NEGATIVE node itself, or any descendant of it ----------
+            if path[: len(neg)] == neg:
+                return True
+            # 2b) *any* other direct child of its parent ---------------------
+            if path[:-1] == parent_path:
+                return True
+        return False
+
+    # 3) Build the *node_pool* like before, but ignoring skipped paths -------
     node_pool: Dict[str, Dict[str, Any]] = {}
 
-    for path, value in series.items():
-        if not isinstance(path, tuple):
-            path = (path,)
+    for raw_path, raw_value in series.items():
+        path = raw_path if isinstance(raw_path, tuple) else (raw_path,)
+
+        if _skip(path):
+            continue  # negative branch – ignore completely
 
         parent_id = ""
         parent_label = ""
@@ -788,7 +828,7 @@ def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:
                     "parent": parent_id,
                     "value": 0.0,
                 }
-            node_pool[curr_id]["value"] += float(value) if pd.notna(value) else 0.0
+            node_pool[curr_id]["value"] += float(raw_value) if pd.notna(raw_value) else 0.0
 
             parent_id = curr_id
             parent_label = label
@@ -798,17 +838,20 @@ def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:
     return list(node_pool.values())
 
 
+# ---------------------------------------------------------------------------
+# Pass 2 – cosmetic pruning of self‑children --------------------------------
+# ---------------------------------------------------------------------------
+
 def prune_single_self_children(nodes: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    """
-    Remove a node if …
+    """Remove a node if …
       1. it is the *only* child of its parent, **and**
-      2. its ``id`` is the parent’s id plus “‑<last‑segment‑of‑parent>_”.
-    
+      2. its ``id`` is the parent’s id plus "‑<last‑segment‑of‑parent>_".
+
     Parameters
     ----------
     nodes : list[dict]
         Each dict has the keys ``id``, ``label``, ``parent``, ``value``.
-    
+
     Returns
     -------
     list[dict]
@@ -823,25 +866,29 @@ def prune_single_self_children(nodes: List[Dict[str, object]]) -> List[Dict[str,
     pruned = []
     for n in nodes:
         parent_id = n["parent"]
-        if parent_id:                                # ignore roots (parent == '')
+        if parent_id:  # ignore roots (parent == '')
             only_child = len(children_map[parent_id]) == 1
-            last_seg   = parent_id.rsplit("-", 1)[-1]
-            expected   = f"{parent_id}-{last_seg}_"
-            if only_child and n["id"] == expected:   # matches both criteria → drop
+            last_seg = parent_id.rsplit("-", 1)[-1]
+            expected = f"{parent_id}-{last_seg}_"
+            if only_child and n["id"] == expected:  # matches both criteria → drop
                 continue
         pruned.append(n)
 
     return pruned
 
+
 # ---------------------------------------------------------------------------
-# Public API
+# Public API ----------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def get_sunburst_figure_from_pivot(df: pd.DataFrame, column_to_pick: Tuple[Any, ...]) -> go.Figure:
-    """Return a Plotly *Sunburst* figure built from a pivoted DataFrame.
+    """Return a Plotly *Sunburst* figure built from a pivoted ``DataFrame``.
 
-    • Truncates paths after the first placeholder ("_").
-    • Adds a residual ``parent_`` node only when needed.
+    * Truncates paths after the first placeholder ("_").
+    * Adds a residual ``parent_`` node only when the sum of children values is
+      not equal to the parent value.
+    * Discards branches according to the *negative‑value policy* described in
+      :func:`_aggregate_nodes`.
     """
 
     # Select the requested column ----------------------------------------
@@ -850,13 +897,16 @@ def get_sunburst_figure_from_pivot(df: pd.DataFrame, column_to_pick: Tuple[Any, 
     except KeyError as exc:
         raise KeyError(f"column_to_pick={column_to_pick} not found in df.columns") from exc
 
-    if not isinstance(series.index, pd.MultiIndex):
-        series.index = pd.MultiIndex.from_arrays([series.index])
-
     # Build nodes ---------------------------------------------------------
     raw_nodes = _aggregate_nodes(series)
-    
-    final_nodes = prune_single_self_children(raw_nodes)    
+
+    print("-------raw_nodes----------")
+    pprint(raw_nodes, width=200)
+
+    final_nodes = prune_single_self_children(raw_nodes)
+
+    print("-------final_nodes----------")
+    pprint(final_nodes, width=200)
 
     # Assemble figure -----------------------------------------------------
     ids = [n["id"] for n in final_nodes]
