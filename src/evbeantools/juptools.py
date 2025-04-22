@@ -734,6 +734,10 @@ def highlight_rows(df: pd.DataFrame, row_color_map: dict[str, str]):
     return styler
 
 
+# ---------------------------------------------------------------------------
+# Helper utilities
+# ---------------------------------------------------------------------------
+
 def _safe_label(label: Any, parent_label: str) -> str:
     """Return a human‑readable label unique within its parent scope.
 
@@ -794,55 +798,40 @@ def _aggregate_nodes(series: pd.Series) -> List[Dict[str, Any]]:
     return list(node_pool.values())
 
 
-# ---------------------------------------------------------------------------
-# Pass 2 – inject residual placeholders only when needed
-# ---------------------------------------------------------------------------
-
-def _inject_residual_placeholders(nodes: List[Dict[str, Any]], tol: float = 1e-9) -> List[Dict[str, Any]]:
-    """Ensure a ``parent_`` residual node exists *only* when explicit children do
-    not sum to their parent's value.
-
-    Fixes *RuntimeError* by avoiding in‑place dict mutation during iteration.
+def prune_single_self_children(nodes: List[Dict[str, object]]) -> List[Dict[str, object]]:
     """
-
-    id_to_node: Dict[str, Dict[str, Any]] = {n["id"]: n for n in nodes}
-    children_map: Dict[str, List[str]] = defaultdict(list)
+    Remove a node if …
+      1. it is the *only* child of its parent, **and**
+      2. its ``id`` is the parent’s id plus “‑<last‑segment‑of‑parent>_”.
+    
+    Parameters
+    ----------
+    nodes : list[dict]
+        Each dict has the keys ``id``, ``label``, ``parent``, ``value``.
+    
+    Returns
+    -------
+    list[dict]
+        The pruned list, in the original order.
+    """
+    # 1) Build a quick lookup: parent‑id → list of child‑ids
+    children_map = defaultdict(list)
     for n in nodes:
-        if n["parent"]:
-            children_map[n["parent"]].append(n["id"])
+        children_map[n["parent"]].append(n["id"])
 
-    # Iterate over a *static* snapshot of parent ids to avoid modifying the
-    # dictionary while looping.
-    for parent_id in list(id_to_node.keys()):
-        parent_node = id_to_node[parent_id]
-        child_ids = children_map.get(parent_id, [])
+    # 2) Keep or drop each node
+    pruned = []
+    for n in nodes:
+        parent_id = n["parent"]
+        if parent_id:                                # ignore roots (parent == '')
+            only_child = len(children_map[parent_id]) == 1
+            last_seg   = parent_id.rsplit("-", 1)[-1]
+            expected   = f"{parent_id}-{last_seg}_"
+            if only_child and n["id"] == expected:   # matches both criteria → drop
+                continue
+        pruned.append(n)
 
-        placeholder_ids = [cid for cid in child_ids if id_to_node[cid]["label"].endswith("_")]
-        explicit_ids = [cid for cid in child_ids if cid not in placeholder_ids]
-
-        sum_explicit = sum(id_to_node[c]["value"] for c in explicit_ids)
-        residual = parent_node["value"] - sum_explicit
-
-        # Remove any pre‑existing placeholder children; we'll recreate only if needed
-        for pid in placeholder_ids:
-            id_to_node.pop(pid, None)
-        if placeholder_ids:
-            children_map[parent_id] = explicit_ids
-
-        if residual > tol:
-            placeholder_label = _safe_label("_", parent_node["label"])
-            placeholder_id = f"{parent_id}-{placeholder_label}" if parent_id else placeholder_label
-            id_to_node[placeholder_id] = {
-                "id": placeholder_id,
-                "label": placeholder_label,
-                "parent": parent_id,
-                "value": residual,
-            }
-            children_map[parent_id].append(placeholder_id)
-
-    ordered_nodes = sorted(id_to_node.values(), key=lambda d: (d["id"].count("-"), d["id"]))
-    return ordered_nodes
-
+    return pruned
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -866,18 +855,8 @@ def get_sunburst_figure_from_pivot(df: pd.DataFrame, column_to_pick: Tuple[Any, 
 
     # Build nodes ---------------------------------------------------------
     raw_nodes = _aggregate_nodes(series)
-
-    print(f"-------raw_nodes-------------")
     
-    pprint(raw_nodes, width=200)
-
-    final_nodes = _inject_residual_placeholders(raw_nodes)
-    
-    print(f"-------final_nodes-------------")
-    
-    pprint(final_nodes, width=200)
-
-    final_nodes = raw_nodes
+    final_nodes = prune_single_self_children(raw_nodes)    
 
     # Assemble figure -----------------------------------------------------
     ids = [n["id"] for n in final_nodes]
@@ -886,7 +865,6 @@ def get_sunburst_figure_from_pivot(df: pd.DataFrame, column_to_pick: Tuple[Any, 
     values = [n["value"] for n in final_nodes]
 
     fig = go.Figure(go.Sunburst(ids=ids, labels=labels, parents=parents, values=values, branchvalues="total"))
-    fig.update_layout(margin=dict(t=30, l=0, r=0, b=0))
     return fig
 
 
