@@ -735,7 +735,14 @@ def highlight_rows(df: pd.DataFrame, row_color_map: dict[str, str]):
 
 
 # ---------------------------------------------------------------------------
-# Helper utilities
+# Config --------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+_SEP = "==="   # ← centralised place to change the node‑ID separator
+
+
+# ---------------------------------------------------------------------------
+# Helpers -------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def _safe_label(label: Any, parent_label: str) -> str:
@@ -746,7 +753,7 @@ def _safe_label(label: Any, parent_label: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Core builder ---------------------------------------------------------------
+# Core builder --------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def _aggregate_nodes(
@@ -785,13 +792,14 @@ def _aggregate_nodes(
                 break
 
             label = _safe_label(raw_label, parent_label)
-            # build current id deterministically from visual labels
+
+            # deterministic current‑ID from visual labels
             parts: List[str] = []
             tmp_parent = ""
             for part in path[: depth + 1]:
                 parts.append(_safe_label(part, tmp_parent))
                 tmp_parent = parts[-1]
-            curr_id = "-".join(parts)
+            curr_id = _SEP.join(parts)
 
             if curr_id not in node_pool:
                 node_pool[curr_id] = {
@@ -827,8 +835,8 @@ def _aggregate_nodes(
     # 3a) drop entire branches of root negatives (lenient mode)
     if tolerate_negative_roots:
         for neg in root_negatives:
-            prefix = f"{neg['id']}-"
-            for node_id in node_pool.keys():
+            prefix = f"{neg['id']}{_SEP}"
+            for node_id in list(node_pool):  # list() because we loop and modify
                 if node_id == neg["id"] or node_id.startswith(prefix):
                     to_drop.add(node_id)
 
@@ -836,8 +844,8 @@ def _aggregate_nodes(
     for neg in nonroot_negatives:
         parent_id = neg["parent"]
         for child_id in children_map[parent_id]:
-            prefix = f"{child_id}-"
-            for node_id in node_pool.keys():
+            prefix = f"{child_id}{_SEP}"
+            for node_id in list(node_pool):
                 if node_id == child_id or node_id.startswith(prefix):
                     to_drop.add(node_id)
 
@@ -846,7 +854,7 @@ def _aggregate_nodes(
 
 
 # ---------------------------------------------------------------------------
-# Cosmetic pruning -----------------------------------------------------------
+# Cosmetic pruning ----------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def prune_single_self_children(nodes: List[Dict[str, object]]) -> List[Dict[str, object]]:
@@ -860,8 +868,8 @@ def prune_single_self_children(nodes: List[Dict[str, object]]) -> List[Dict[str,
         parent_id = n["parent"]
         if parent_id:
             only_child = len(children_map[parent_id]) == 1
-            last_seg = parent_id.rsplit("-", 1)[-1]
-            expected = f"{parent_id}-{last_seg}_"
+            last_seg = parent_id.rsplit(_SEP, 1)[-1]
+            expected = f"{parent_id}{_SEP}{last_seg}_"
             if only_child and n["id"] == expected:
                 continue
         pruned.append(n)
@@ -878,10 +886,25 @@ def get_sunburst_figure_from_pivot(
     *,
     strict_mode: bool = True,
 ) -> go.Figure:
-    """Build a Plotly *Sunburst* figure from ``df``.
+    """Build a Plotly *Sunburst* figure from pandas dataframe.
+    The hierarchy of the sunburst diagram is derived from the index of the dataframe, 
+    which is expected to be a multiindex.
+    
+    The values are taken from the column specified by *column_to_pick*.
+    
+    If data is structured in such a way, that total of the next level hierarchy is not equal to the parent,
+    then the new  node with the name `parent_` is created, with the value equal to the difference between the parent and 
+    the sum of the children.
+    
+    If certain nodes are negative, then this node is dropped as well as all its children as well as all children of its 
+    parent. See also usage of the strict_mode parameter for the situation, when the root node is negative.
 
     Parameters
     ----------
+    df : dataframe with multiindex rows and columns
+    
+    column_to_pick: a column name.
+    
     strict_mode : bool, default ``True``
         * ``True``  – strict mode: any negative‑valued root raises an error.
         * ``False`` – lenient mode: negative roots (and their branches) are
@@ -899,12 +922,12 @@ def get_sunburst_figure_from_pivot(
         series,
         tolerate_negative_roots=not strict_mode,
     )
-    print("-------raw_nodes----------")
-    pprint(raw_nodes, width=200)
+    # print("-------raw_nodes----------")
+    # pprint(raw_nodes, width=200)
 
     final_nodes = prune_single_self_children(raw_nodes)
-    print("-------final_nodes----------")
-    pprint(final_nodes, width=200)
+    # print("-------final_nodes----------")
+    # pprint(final_nodes, width=200)
 
     ids = [n["id"] for n in final_nodes]
     labels = [n["label"] for n in final_nodes]
@@ -920,8 +943,6 @@ def get_sunburst_figure_from_pivot(
             branchvalues="total",
         )
     )
-
-
 
 def main():
     data = {'indexcol':['row1','row2','row3'],
