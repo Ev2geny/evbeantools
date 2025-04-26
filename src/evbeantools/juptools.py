@@ -895,6 +895,17 @@ def get_sunburst_figure_from_pivot(
     If data is structured in such a way, that total of the next level hierarchy is not equal to the parent,
     then the new  node with the name `parent_` is created, with the value equal to the difference between the parent and 
     the sum of the children.
+    Example:
+        Expenses:Misc         200 USD
+        Expenses:Misc:Travel  100 USD
+        
+        In this case the `Misc` sector has a total of 300 USD, 
+        but the sum of the children (`Misc:Travel`) is only 100 USD.
+        
+        In this case the sunburst sector `Misc` will be created with the value of 300 USD, and it will have 2 children:
+          `Travel` with the value of 100 USD 
+          `Misc_` with the value of 200 USD.
+        
     
     If certain nodes are negative, then this node is dropped as well as all its children as well as all children of its 
     parent. See also usage of the strict_mode parameter for the situation, when the root node is negative.
