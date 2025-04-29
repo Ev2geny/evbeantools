@@ -51,12 +51,14 @@ def convert_columns_to_float(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_total(df: pd.DataFrame,
-              column_totals=True,
-              row_totals=False,
-              col_name_to_add_to: str | None = None,
-              row_name_to_add_to: str | None = None,
-              col_total_name = 'Total') -> pd.DataFrame:
+def add_total(
+    df: pd.DataFrame,
+    column_totals: bool = True,
+    row_totals: bool = False,
+    col_name_to_add_to: str | None = None,
+    row_name_to_add_to: str | None = None,
+    total_label: str = "Total",
+) -> pd.DataFrame:
     """
     Adds totals to the dataframe
     Args:
@@ -68,35 +70,40 @@ def add_total(df: pd.DataFrame,
         row_name_to_add_to (str): name of the row to add row totals to. If None, then 'Total' is added 
                                    as the the column index
     """
+    
     df = df.copy()
-    
-    if column_totals:
-        # Compute the total row
-        total_row = df.sum(numeric_only=True, axis=0)
-        # For non-numeric columns, sum returns NaN; fill with empty strings
-        total_row = total_row.fillna('')
-        if col_name_to_add_to is None:
-            # Set index to 'Total'
-            total_row.name = col_total_name
-            df = pd.concat([df, total_row.to_frame().T])
-        else:
-            # Set the value in col_name_to_add_to to 'Total'
-            total_row[col_name_to_add_to] = 'Total'
-            df = pd.concat([df, total_row.to_frame().T], ignore_index=True)
-    
-    if row_totals:
-        # Compute the total column
-        total_column = df.sum(numeric_only=True, axis=1)
-        if row_name_to_add_to is None:
-            # Add 'Total' as a new column
-            df['Total'] = total_column
-        else:
-            # Add 'Total' column and set specific row to 'Total'
-            df['Total'] = total_column
-            df.loc[row_name_to_add_to, 'Total'] = 'Total'
-    
-    return df
 
+    # ---------- Totals row (adds a new row) ----------
+    if column_totals:
+        total_row = df.sum(numeric_only=True, axis=0).fillna("")
+
+        if isinstance(df.index, pd.MultiIndex):
+            # Pad to full length so the index stays a MultiIndex
+            total_row.name = (total_label,) + ("",) * (df.index.nlevels - 1)
+        else:
+            total_row.name = total_label
+
+        if col_name_to_add_to is not None:
+            total_row[col_name_to_add_to] = total_label
+            df = pd.concat([df, total_row.to_frame().T], ignore_index=True)
+        else:
+            df = pd.concat([df, total_row.to_frame().T])
+
+    # ---------- Totals column (adds a new column) ----------
+    if row_totals:
+        total_col = df.sum(numeric_only=True, axis=1)
+
+        if isinstance(df.columns, pd.MultiIndex):
+            total_col_name = (total_label,) + ("",) * (df.columns.nlevels - 1)
+        else:
+            total_col_name = total_label
+
+        df[total_col_name] = total_col
+
+        if row_name_to_add_to is not None:
+            df.loc[row_name_to_add_to, total_col_name] = total_label
+
+    return df
 
 def beanquery2df(entries: list, opts: dict,  query: str) -> pd.DataFrame:
     
@@ -418,6 +425,70 @@ def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc
     
     return pivot
 
+def _get_net_worths_per_commodity(entries, opts, dates: Iterable, target_currency: str | None = None) -> pd.DataFrame:
+    name_assets = opts['name_assets']
+    name_liabilities = opts['name_liabilities']
+    
+    bean_summator = BeanSummator(entries, opts, f"{name_assets}|{name_liabilities}",
+                                 num_acc_components_from_root = 0)
+    
+    if target_currency:
+        price_map = build_price_map(entries)
+    
+    dates_intern = list(dates)
+    
+    result_lst = []
+    
+    for date in dates_intern:
+        # net_worth = net_worth.append(get_net_worth(entries, errors, opts, date, currency), ignore_index=True)
+        net_worth: InventoryAggregator = bean_summator.sum_till_date(date)
+        if target_currency:
+            net_worth = net_worth.convert(target_currency, price_map, date)
+            
+        
+        for position in net_worth['']:
+            result_lst.append({
+                'amount': position.units.number,
+                'commodity': position.units.currency,
+                'date': date
+            })
+        
+    result_df = pd.DataFrame(result_lst)
+    
+    result_pivot_df = result_df.pivot_table(index='commodity', values='amount', columns='date', aggfunc='sum').fillna(0)
+    
+    return result_pivot_df
+        
+
+def get_net_worths_per_commodity(entries, opts,                      
+                                 freq,
+                                 start_period: pd.Period | None = None,
+                                 qnt_periods=None,
+                                 end_period:pd.Period | None = None,
+                                 currency = None):
+    
+    if not start_period:
+        start_period = pd.Period(entries[0].date, freq)
+    else:
+        start_period = pd.Period(start_period, freq)
+
+    if qnt_periods:
+        end_period = start_period + qnt_periods - 1
+    else:
+        if not end_period:
+            end_period = pd.Period(entries[-1].date, freq)
+        else:
+            end_period = pd.Period(end_period, freq)
+
+    
+    period_end_dates = get_period_end_dates(start_period, end_period)
+    
+    net_worths_per_commodity = _get_net_worths_per_commodity(entries, opts, period_end_dates, target_currency=currency)
+    
+    net_worths_per_commodity.columns = pd.to_datetime(net_worths_per_commodity.columns).to_period(freq)
+    
+    return convert_columns_to_float(net_worths_per_commodity)
+    
 
 #TODO: verify that this function works with multiindex columns, as I had to disable it
 def check_presence_of_column_in_dataframe(df:pd.DataFrame, column):

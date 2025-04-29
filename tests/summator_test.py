@@ -488,6 +488,36 @@ class TestBeanSummator(unittest.TestCase):
         self.assertEqual(result,expected)
         pprint(result)
         
+    @loader.load_doc() 
+    def test_null_acc_components_from_root(self, entries, errors, options):
+        """
+        2020-01-01 open Assets:Bank1
+        2020-01-01 open Assets:Bank2
+        2020-01-01 open Equity:Opening-Balances
+        2020-01-01 open Expenses:Misc
+        2020-01-01 open Income:Salary
+        
+        2020-01-02 * "Initial Balance"
+          Assets:Bank1  100.00 USD
+          Equity:Opening-Balances -100.00 USD
+        
+        2020-01-04 * "Salary"
+          Assets:Bank2  100.00 USD
+          Income:Salary -100.00 USD
+        """
+        
+        bean_summator = BeanSummator(entries, 
+                                options,
+                                accounts_re ="Assets",
+                                num_acc_components_from_root = 0)
+        
+        # Testing on the date, where there are entries, but no transactions
+        test_date = datetime.date(2020,1,4)
+        result = bean_summator.sum_till_date(test_date)
+        # expected = InventoryAggregator({'Assets': "200.00 USD"})
+        # self.assertEqual(result,expected)
+        pprint(result)
+        
 if __name__ == "__main__":
     
     # inv_agg1 = InventoryAggregator({"Assets:Bank1": "100.00 USD, 50 EUR", 
@@ -529,5 +559,5 @@ if __name__ == "__main__":
     
     test_class_inv_agg = TestInventoryAggregator()
     
-    # test_class_inv_agg.test_convert_with_cost_and_no_cost_the_same_commodity()
+    test_class_summator.test_null_acc_components_from_root()
     

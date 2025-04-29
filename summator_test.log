@@ -1,0 +1,37 @@
+DEBUG - summator_test - 556 - <module> - 
+*****************Starting test****************
+DEBUG - summator_test - 556 - <module> - 
+*****************Starting test****************
+DEBUG - summator - 274 - __init__ - Creating BeanSummator with accounts_re=Assets and num_acc_components_from_root=0
+DEBUG - summator - 307 - sum_till_date - Calculating sum for date 2020-01-04
+DEBUG - summator - 333 - sum_till_date - Looking at the entry 
+ Open(meta={'filename': '<string>', 'lineno': 2}, date=datetime.date(2020, 1, 1), account='Assets:Bank1', currencies=None, booking=None)
+DEBUG - summator - 357 - _process_entry - Processing entry 
+ Open(meta={'filename': '<string>', 'lineno': 2}, date=datetime.date(2020, 1, 1), account='Assets:Bank1', currencies=None, booking=None)
+DEBUG - summator - 333 - sum_till_date - Looking at the entry 
+ Open(meta={'filename': '<string>', 'lineno': 3}, date=datetime.date(2020, 1, 1), account='Assets:Bank2', currencies=None, booking=None)
+DEBUG - summator - 357 - _process_entry - Processing entry 
+ Open(meta={'filename': '<string>', 'lineno': 3}, date=datetime.date(2020, 1, 1), account='Assets:Bank2', currencies=None, booking=None)
+DEBUG - summator - 333 - sum_till_date - Looking at the entry 
+ Open(meta={'filename': '<string>', 'lineno': 4}, date=datetime.date(2020, 1, 1), account='Equity:Opening-Balances', currencies=None, booking=None)
+DEBUG - summator - 357 - _process_entry - Processing entry 
+ Open(meta={'filename': '<string>', 'lineno': 4}, date=datetime.date(2020, 1, 1), account='Equity:Opening-Balances', currencies=None, booking=None)
+DEBUG - summator - 333 - sum_till_date - Looking at the entry 
+ Open(meta={'filename': '<string>', 'lineno': 5}, date=datetime.date(2020, 1, 1), account='Expenses:Misc', currencies=None, booking=None)
+DEBUG - summator - 357 - _process_entry - Processing entry 
+ Open(meta={'filename': '<string>', 'lineno': 5}, date=datetime.date(2020, 1, 1), account='Expenses:Misc', currencies=None, booking=None)
+DEBUG - summator - 333 - sum_till_date - Looking at the entry 
+ Open(meta={'filename': '<string>', 'lineno': 6}, date=datetime.date(2020, 1, 1), account='Income:Salary', currencies=None, booking=None)
+DEBUG - summator - 357 - _process_entry - Processing entry 
+ Open(meta={'filename': '<string>', 'lineno': 6}, date=datetime.date(2020, 1, 1), account='Income:Salary', currencies=None, booking=None)
+DEBUG - summator - 333 - sum_till_date - Looking at the entry 
+ Transaction(meta={'filename': '<string>', 'lineno': 8, '__tolerances__': {'USD': Decimal('0.005')}}, date=datetime.date(2020, 1, 2), flag='*', payee=None, narration='Initial Balance', tags=frozenset(), links=frozenset(), postings=[Posting(account='Assets:Bank1', units=100.00 USD, cost=None, price=None, flag=None, meta={'filename': '<string>', 'lineno': 9}), Posting(account='Equity:Opening-Balances', units=-100.00 USD, cost=None, price=None, flag=None, meta={'filename': '<string>', 'lineno': 10})])
+DEBUG - summator - 357 - _process_entry - Processing entry 
+ Transaction(meta={'filename': '<string>', 'lineno': 8, '__tolerances__': {'USD': Decimal('0.005')}}, date=datetime.date(2020, 1, 2), flag='*', payee=None, narration='Initial Balance', tags=frozenset(), links=frozenset(), postings=[Posting(account='Assets:Bank1', units=100.00 USD, cost=None, price=None, flag=None, meta={'filename': '<string>', 'lineno': 9}), Posting(account='Equity:Opening-Balances', units=-100.00 USD, cost=None, price=None, flag=None, meta={'filename': '<string>', 'lineno': 10})])
+DEBUG - summator - 333 - sum_till_date - Looking at the entry 
+ Transaction(meta={'filename': '<string>', 'lineno': 12, '__tolerances__': {'USD': Decimal('0.005')}}, date=datetime.date(2020, 1, 4), flag='*', payee=None, narration='Salary', tags=frozenset(), links=frozenset(), postings=[Posting(account='Assets:Bank2', units=100.00 USD, cost=None, price=None, flag=None, meta={'filename': '<string>', 'lineno': 13}), Posting(account='Income:Salary', units=-100.00 USD, cost=None, price=None, flag=None, meta={'filename': '<string>', 'lineno': 14})])
+DEBUG - summator - 357 - _process_entry - Processing entry 
+ Transaction(meta={'filename': '<string>', 'lineno': 12, '__tolerances__': {'USD': Decimal('0.005')}}, date=datetime.date(2020, 1, 4), flag='*', payee=None, narration='Salary', tags=frozenset(), links=frozenset(), postings=[Posting(account='Assets:Bank2', units=100.00 USD, cost=None, price=None, flag=None, meta={'filename': '<string>', 'lineno': 13}), Posting(account='Income:Salary', units=-100.00 USD, cost=None, price=None, flag=None, meta={'filename': '<string>', 'lineno': 14})])
+DEBUG - summator - 349 - sum_till_date - Calculated sum is 
+ InventoryAggregator(<class 'beancount.core.inventory.Inventory'>,
+                    {'': (200.00 USD)})
