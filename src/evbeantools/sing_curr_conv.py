@@ -1536,21 +1536,49 @@ def main():
     
     parser = CustomArgumentParser(description="Attempts to convert all ledger entries to a single target currency, while calculating unrealized gains.",
                                   formatter_class=formatter_class)
-    parser.add_argument('input_file_name', type=str, help='Input file name for conversion')
+    parser.add_argument('input_file_name', 
+                        type=str, 
+                        help='Input file name for conversion')
+    
     parser.add_argument('output', type=str, 
                         help="""Output file name to created converted ledger. 
                                 If '_bq_' is specifyed, then instead of writing to a file, the tool opens beanquery with the converted ledger""")
-    parser.add_argument('-c', '--currency', type=str, dest='target_currency', help='Target currency to convert all entries to. If omitted, the first operating currency is used if available in the options. If not, an error is raised.')
-    parser.add_argument('-s', '--start_date', type=str, dest='start_date', help='Optional start date for conversion in the format YYYY-MM-DD. If omitted, the date of the first entry is used')
-    parser.add_argument('-e', '--end_date', type=str, dest='end_date', 
+    
+    parser.add_argument('-c', '--currency', 
+                        type=str, 
+                        dest='target_currency', 
+                        help='Target currency to convert all entries to. If omitted, the first operating currency is used if available in the options. If not, an error is raised.')
+    
+    parser.add_argument('-s', '--start_date', 
+                        type=str, 
+                        dest='start_date', 
+                        help='Optional start date for conversion in the format YYYY-MM-DD. If omitted, the date of the first entry is used')
+    
+    parser.add_argument('-e', '--end_date', 
+                        type=str, 
+                        dest='end_date', 
                         help='End date for conversion in the format YYYY-MM-DD. If omitted, the date of the last entry is used')
-    parser.add_argument('-a', '--account', type=str, default=f'{UNREAL_GAINES_P_AND_L_ACC}', dest='unreal_gains_p_l_acc',
+    
+    parser.add_argument('-a', '--account', 
+                        type=str, 
+                        default=f'{UNREAL_GAINES_P_AND_L_ACC}', 
+                        dest='unreal_gains_p_l_acc',
                         help='Account to book unrealized gains')
-    parser.add_argument('-t', '--self_testing_mode', action='store_true', dest='self_testing_mode', 
+    
+    parser.add_argument('-t', '--self_testing_mode', 
+                        action='store_true', 
+                        dest='self_testing_mode', 
                         help="""In the self-testing mode, several checks are done using beanquery comparing the results on the converted and initial entries.
                                 This is primary used for testing purposes, but can also be enabled in production.""")
-    parser.add_argument('-T', '--tolerance', type=str, default="0.001", help='Tolerance for self-testing mode')
-    parser.add_argument('-g', '--group_p_l', action='store_true', dest='group_p_l_acc_tr', 
+    
+    parser.add_argument('-T', '--tolerance', 
+                        type=str, 
+                        default="0.001", 
+                        help='Tolerance for self-testing mode')
+    
+    parser.add_argument('-g', '--group_p_l', 
+                        action='store_true', 
+                        dest='group_p_l_acc_tr', 
                         help=f"""If this argument is used, then there will be only one posting to P&L account in a single unrealized gain transaction.
                                  Otherwise (if this argument is not provided) there will be a P&L account posting for each Bal Sheet account, which has unrealized gains. 
                                  Usage of this argument causes more compact unrealized gains transactions, but such

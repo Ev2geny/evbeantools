@@ -57,7 +57,7 @@ def add_total(
     row_totals: bool = False,
     col_name_to_add_to: str | None = None,
     row_name_to_add_to: str | None = None,
-    total_label: str = "Total",
+    col_total_name: str = "Total",
 ) -> pd.DataFrame:
     """
     Adds totals to the dataframe
@@ -69,6 +69,8 @@ def add_total(
                                    as the the rows index
         row_name_to_add_to (str): name of the row to add row totals to. If None, then 'Total' is added 
                                    as the the column index
+        col_total_name (str): name of the ROW with total, which will be added, when the option column_totals is True is 
+                              chosen
     """
     
     df = df.copy()
@@ -79,12 +81,12 @@ def add_total(
 
         if isinstance(df.index, pd.MultiIndex):
             # Pad to full length so the index stays a MultiIndex
-            total_row.name = (total_label,) + ("",) * (df.index.nlevels - 1)
+            total_row.name = (col_total_name,) + ("",) * (df.index.nlevels - 1)
         else:
-            total_row.name = total_label
+            total_row.name = col_total_name
 
         if col_name_to_add_to is not None:
-            total_row[col_name_to_add_to] = total_label
+            total_row[col_name_to_add_to] = col_total_name
             df = pd.concat([df, total_row.to_frame().T], ignore_index=True)
         else:
             df = pd.concat([df, total_row.to_frame().T])
@@ -94,14 +96,14 @@ def add_total(
         total_col = df.sum(numeric_only=True, axis=1)
 
         if isinstance(df.columns, pd.MultiIndex):
-            total_col_name = (total_label,) + ("",) * (df.columns.nlevels - 1)
+            total_col_name = (col_total_name,) + ("",) * (df.columns.nlevels - 1)
         else:
-            total_col_name = total_label
+            total_col_name = col_total_name
 
         df[total_col_name] = total_col
 
         if row_name_to_add_to is not None:
-            df.loc[row_name_to_add_to, total_col_name] = total_label
+            df.loc[row_name_to_add_to, total_col_name] = col_total_name
 
     return df
 
@@ -277,7 +279,8 @@ def get_bean_pivot(df,
                    ascending=False,
                    drop_identical_row_levels=True,
                    repeat_row_labels=False,
-                   values: str = "amount") -> pd.DataFrame:
+                   values: str = "amount",
+                   swap_columns_groupping_order = False) -> pd.DataFrame:
     """
     Generates a pivot table from a given DataFrame based on specified parameters, primarily focusing on financial data.
     
@@ -308,6 +311,10 @@ def get_bean_pivot(df,
     
     - values (str, optional): The column name to aggregate in the pivot table, specified as a regex pattern. 
       Defaults to "amount".
+      
+    -swap_columns_groupping_order (bool, optional): Whether to swap order of grouping columns in the pivot table.
+        By default, columns grouping follows the standard order of grouping columns of columns  values  →  columns
+        If True, the order of grouping columns is reversed to  columns  →  columns values.
     
     Returns:
         pd.DataFrame: A pivot table generated from the input DataFrame according to the specified parameters.
@@ -377,6 +384,9 @@ def get_bean_pivot(df,
             raise RuntimeError(f"An exception is raised when trying to sort pivot table by {sort_by}.\n"\
                 "Try calling the function with the 'sort_by' parameter and then use DataFrame.columns command to see the correct naming for columns") from e
     
+    if swap_columns_groupping_order:
+        # Swapping the order of grouping columns
+        df_pivot = df_pivot.swaplevel(0,1, axis=1).sort_index(axis=1, level=0)
     
     return df_pivot
 
@@ -465,7 +475,21 @@ def get_net_worths_per_commodity(entries, opts,
                                  start_period: pd.Period | None = None,
                                  qnt_periods=None,
                                  end_period:pd.Period | None = None,
-                                 currency = None):
+                                 currency = None) -> pd.DataFrame:
+    """
+    Function to get net worths per commodity for a last date of the series of periods.
+    Returns a dataframe where columns are periods and rows are commodities.
+    
+    Parameters:
+        entries: list of entries
+        opts: options
+        freq: frequency of the periods as defined in Pandas (e.g. 'M' for month, 'Y' for year)
+        start_period: start period (optional)
+        qnt_periods: number of periods (optional)
+        end_period: end period (optional)
+        currency: target currency (optional)
+    
+    """
     
     if not start_period:
         start_period = pd.Period(entries[0].date, freq)
