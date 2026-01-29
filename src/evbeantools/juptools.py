@@ -6,7 +6,7 @@ from decimal import Decimal
 import datetime
 import re
 from collections.abc import Iterable
-from typing import Union, List, Tuple, Dict, Any, Optional, Callable, TypeVar, Generic, Type, cast, overload
+from typing import Union, List, Tuple, Dict, Any, Optional, Callable, TypeVar,  neric, Type, cast, overload
 from pprint import pprint
 from collections import defaultdict
 

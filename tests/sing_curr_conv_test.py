@@ -2063,6 +2063,50 @@ class TestSingCurrConv(unittest.TestCase):
         
         # verify_unrealized_gains(entries_eqv, options_eqv, expected_unreal_gains)   
 
+    # Simple case with no transactions and no price entries
+    @loader.load_doc()
+    def test_simple_case_no_transaction_no_price(self, entries, errors, options):
+        """
+        2020-01-01 open Assets:Bank:Checking 
+        2020-01-01 open Equity:Opening-Balances
+        
+        2020-01-01 * "Opening Balances"
+            Assets:Bank:Checking      100 USD
+            Equity:Opening-Balances  -100 USD
+        """
+        entries_eqv, errors_eqv, options_eqv = get_equiv_sing_curr_entries(entries, options, "EUR",
+                                                                                      self_testing_mode=True)  
+        
+        printer.print_entries(entries_eqv)
+        
+        verify_different_objects(entries, entries_eqv)
+        
+        expected_unreal_gains = []
+        
+        verify_unrealized_gains(entries_eqv, options_eqv, expected_unreal_gains)
+
+    @loader.load_doc()
+    def test_simple_case_exchange_3rd_curr(self, entries, errors, options):
+        """
+        2020-01-01 open Assets:Bank:Checking1 
+        2020-01-01 open Assets:Bank:Checking2
+        2020-01-01 open Equity:Opening-Balances
+        
+        2020-01-01 * "Opening Balances"
+            Assets:Bank:Checking1      100 USD
+            Equity:Opening-Balances   -100 USD
+            
+        2020-01-01 * "Currency exchange"
+            Assets:Bank:Checking1      100 USD
+            Assets:Bank:Checking2     -100 EUR @@ 100 USD
+        """
+        
+        with self.assertRaises(RuntimeError) as cm:
+        
+            entries_eqv, errors_eqv, options_eqv = get_equiv_sing_curr_entries(entries, options, "GBP",
+                                                                                        self_testing_mode=True)  
+            self.assertIsInstance(cm.exception.__cause__, TransferFundsToFromUnconvertableCommErr)
+        
 
 class TestSingCurrConvMultCurrSameAcc(unittest.TestCase):
     """
@@ -2819,3 +2863,5 @@ if __name__ == "__main__":
     
     # test_sing_curr_conv.test_sorting_order()
     # test_sing_curr_conv.test_small_balance_error()
+    
+    test_sing_curr_conv.test_simple_case_exchange_3rd_curr()
