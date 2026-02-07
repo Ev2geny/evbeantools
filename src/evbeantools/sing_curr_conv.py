@@ -42,6 +42,7 @@ import beanquery.shell
 # from pydantic import ValidationError, validate_call
 
 from evbeantools.summator import BeanSummator, InventoryAggregator
+from evbeantools.utils import  print_entries_to_string, print_errors_to_string
 from evbeantools.sing_curr_conv_utils import check_vs_beanquery
 
 # This is to make sure, that the module can be run as beancount plugin
@@ -76,43 +77,6 @@ UNREAL_GAINES_P_AND_L_ACC: Account = "Income:Unrealized-Gains"
 ACC_FOR_PRICE_DIFF: Account = UNREAL_GAINES_P_AND_L_ACC
 
 GAINS_SUFFIX = ""
-
-
-def print_entries_to_string(entries) -> str:
-    """
-    Helper function, which prints entries to string
-    Used for testing and debugging   
-
-    Args:
-        entries (_type_): _description_
-
-    Returns:
-        str: lenger file in text format
-    """
-    file_replacement = io.StringIO()
-    printer.print_entries(entries, file=file_replacement)
-    entries_str = file_replacement.getvalue()
-    file_replacement.close()
-    return entries_str    
-
-
-def print_errors_to_string(errors):
-    """
-    Helper function, which prints errorrs to string
-    Used for testing and debugging   
-
-    Args:
-        entries (_type_): _description_
-
-    Returns:
-        str: lenger file in text format
-    """
-    file_replacement = io.StringIO()
-    printer.print_errors(errors, file=file_replacement)
-    errors_str = file_replacement.getvalue()
-    file_replacement.close()
-    return errors_str    
-
 
 # This is just a type desclartion for type hints
 Commodities = set[Currency]

@@ -98,7 +98,7 @@ Now consider another example, closely related to unrealized gains but subtly dif
 2024-01-03 price BTC  40000 USD
 ```
 
-Between January 1 and January 3, the net worth in this ledger changes from 20,000 USD to 40,000 USD, despite no recorded income. This occurs because the BTC was purchased for half its market value (which, by the way, raises questions about some potential shady financial operations).
+Between January 1 and January 3, the net worth in this ledger changes from 20,000 USD to 40,000 USD, despite no recorded income and no price changes. This occurs because the BTC was purchased for half its market value (which, by the way, raises questions about some potential shady financial operations).
 
 Once again, there is no  **beanquery** query to explain this gain in an Income Statement-like report.
 
