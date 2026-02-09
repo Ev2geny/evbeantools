@@ -9,6 +9,9 @@ juptools without needing to know about the internal file structure.
 from . fin_flow_diag import show_interactive_fin_flow_diag
 
 from . juptools import add_total, beanquery2df, get_net_worths, get_bean_pivot, get_period_end_dates
-from . juptools import highlight_rows, get_net_worths_per_commodity
+from . juptools import highlight_rows, get_net_worths_per_commodity, remove_empty_rows
 
 from . sunbirts import get_sunburst_figure_from_pivot
+
+# to be removed later
+from . sunbirst_old import  prepare_sunburst_data_input

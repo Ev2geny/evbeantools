@@ -1,10 +1,16 @@
+"""
+Tools for building Plotly sunburst diagrams from pandas dataframes.
+The main function is :func:`get_sunburst_figure_from_pivot`, which takes a dataframe with a multiindex and a column 
+name, and produces a Plotly figure with a sunburst diagram representing the hierarchical data in the dataframe.
+"""
+
+
 from typing import Any, Dict, List, Tuple, Union
 from collections import defaultdict
 
 import pandas as pd
 
 import plotly.graph_objects as go
-
 
 
 # ---------------------------------------------------------------------------

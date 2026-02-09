@@ -535,8 +535,7 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
                 raise KeyError(f"get_sankey_data_from_entries() missing keys: {sorted(missing)}")
 
             link_colors = [
-                transparent(sankey_data["color"][s], alpha=0.35)
-                for s in sankey_data["source"]
+                transparent(sankey_data["color"][i], alpha=0.35) for i in sankey_data["source"]
             ]
 
             fig = go.Figure(
