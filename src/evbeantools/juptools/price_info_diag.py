@@ -1,6 +1,15 @@
 # Define the functions, needed to explore the price information
 
 from ipywidgets import Widget
+import ipywidgets as widgets
+
+import plotly.graph_objects as go
+import numpy as np
+
+from schema import Schema, Optional, Or, SchemaError
+
+from beancount.core import prices
+from beancount.core.data import Transaction
 
 def draw_prices_circular_network(graph_data, radius=1):
     """Generates and displays a network graph using a circular layout with schema validation.
@@ -348,8 +357,7 @@ def get_posting_currencies(entries) -> set:
                 
     return currencies
 
-from ipywidgets import Widget
-from requests import options
+
 
 def show_interactive_price_info(entries, options) -> Widget:
     """

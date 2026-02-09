@@ -15,3 +15,5 @@ from . sunbirts import get_sunburst_figure_from_pivot
 
 # to be removed later
 from . sunbirst_old import  prepare_sunburst_data_input
+
+from . price_info_diag import show_interactive_price_info
