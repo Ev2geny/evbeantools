@@ -17,6 +17,7 @@ dependencies = [
     "pandas",
     "matplotlib",
     "premailer",
+    "pandas-stubs~=3.0.0",
 ]
 
 [project.optional-dependencies]
