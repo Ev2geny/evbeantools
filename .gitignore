@@ -66,5 +66,3 @@ documents/.example.beancount.picklecache
 evbeantools/tmp/*
 notgit/
 tmp/
-
-uv.lock

@@ -142,35 +142,14 @@ def make_prices_circular_network_widget(graph_data, radius: float = 1.0) -> Widg
     )
 
 
-def make_price_history_widget(
-    price_map: dict,
-    initial_pair: tuple[str, str] | None = None,
-) -> Widget:
+def make_price_history_widget(price_map: dict, initial_pair: tuple[str, str] | None = None) -> Widget:
     """
-    Cross-platform (Colab + Binder + VSCode + JupyterLab) price history widget.
-
-    Key design choices for compatibility:
-    - Uses widgets.Dropdown for selection.
-    - Renders Plotly as a *regular* go.Figure displayed inside widgets.Output.
-      (Avoids go.FigureWidget + comm-based updates, which are flaky in Colab.)
-    - Converts dates to ISO strings for safe transport/rendering.
+    Return a widget with dropdown + Plotly FigureWidget for price history.
+    Converts dates to ISO strings to keep comm messages JSON-serializable.
     """
-    # --- Colab: enable widget manager if available (safe no-op elsewhere) ---
-    try:
-        from google.colab import output as _colab_output  # type: ignore
-        _colab_output.enable_custom_widget_manager()
-    except Exception:
-        pass
+    available_pairs = list(price_map.keys())
+    available_pairs.sort(key=lambda x: (x[0], x[1]))
 
-    # --- Plotly renderer: prefer 'colab' if running in Colab, else leave default ---
-    try:
-        import plotly.io as pio
-        if "google.colab" in sys.modules:
-            pio.renderers.default = "colab"
-    except Exception:
-        pass
-
-    available_pairs = sorted(price_map.keys(), key=lambda x: (x[0], x[1]))
     dropdown_width = "50%"
 
     if not available_pairs:
@@ -182,13 +161,13 @@ def make_price_history_widget(
             disabled=True,
         )
         msg = widgets.HTML("<pre>⚠️ PriceMap is empty.</pre>")
-        return widgets.VBox([pair_selector, msg])
+        empty_fig = go.FigureWidget()
+        return widgets.VBox([pair_selector, msg, empty_fig])
 
     if initial_pair is None:
         initial_pair = available_pairs[0]
 
     dropdown_options = [(f"{b} -> {q}", (b, q)) for b, q in available_pairs]
-
     pair_selector = widgets.Dropdown(
         options=dropdown_options,
         value=initial_pair,
@@ -197,72 +176,63 @@ def make_price_history_widget(
         layout=widgets.Layout(width=dropdown_width),
     )
 
+    fig = go.FigureWidget()
+    fig.add_scatter(mode="lines+markers", marker=dict(size=4), line=dict(width=2))
     status = widgets.HTML("")
-    out = widgets.Output()
 
     def _to_iso_date_strings(seq) -> list[str]:
-        out_dates: list[str] = []
+        out: list[str] = []
         for d in seq:
             if isinstance(d, str):
-                out_dates.append(d)
+                out.append(d)
             elif hasattr(d, "isoformat"):
-                out_dates.append(d.isoformat())
+                out.append(d.isoformat())
             else:
-                out_dates.append(str(d))
-        return out_dates
+                out.append(str(d))
+        return out
 
-    def _render(pair: tuple[str, str]) -> None:
+    def set_chart(pair: tuple[str, str]) -> None:
         history = price_map.get(pair, [])
+        if not history:
+            inverse = (pair[1], pair[0])
+            hint = f" (inverse {inverse} exists)" if inverse in price_map else ""
+            status.value = f"<pre>⚠️ No price history found for pair: {pair}.{hint}</pre>"
 
-        with out:
-            out.clear_output(wait=True)
+            with fig.batch_update():
+                fig.data[0].x = []
+                fig.data[0].y = []
+                fig.layout.title = f"Price History: {pair[0]} in {pair[1]}"
+                fig.layout.xaxis.title = "Date"
+                fig.layout.yaxis.title = f"Price ({pair[1]})"
+            return
 
-            if not history:
-                inverse = (pair[1], pair[0])
-                hint = f" (inverse {inverse} exists)" if inverse in price_map else ""
-                status.value = f"<pre>⚠️ No price history found for pair: {pair}.{hint}</pre>"
-                return
+        status.value = ""
 
-            status.value = ""
+        dates_raw = [item[0] for item in history]
+        dates = _to_iso_date_strings(dates_raw)
+        rates = [float(item[1]) for item in history]
 
-            dates_raw = [item[0] for item in history]
-            dates = _to_iso_date_strings(dates_raw)
-            rates = [float(item[1]) for item in history]
+        with fig.batch_update():
+            fig.data[0].x = dates
+            fig.data[0].y = rates
+            fig.data[0].name = f"{pair[0]}/{pair[1]}"
+            fig.layout.title = f"Price History: {pair[0]} in {pair[1]}"
+            fig.layout.xaxis.title = "Date"
+            fig.layout.yaxis.title = f"Price ({pair[1]})"
+            fig.layout.plot_bgcolor = "white"
+            fig.layout.hovermode = "x unified"
+            fig.layout.xaxis.showgrid = True
+            fig.layout.yaxis.showgrid = True
+            fig.layout.yaxis.zeroline = False
 
-            fig = go.Figure()
-            fig.add_scatter(
-                x=dates,
-                y=rates,
-                mode="lines+markers",
-                name=f"{pair[0]}/{pair[1]}",
-                marker=dict(size=4),
-                line=dict(width=2),
-            )
-            fig.update_layout(
-                title=f"Price History: {pair[0]} in {pair[1]}",
-                xaxis=dict(title="Date", showgrid=True, gridcolor="#eee"),
-                yaxis=dict(title=f"Price ({pair[1]})", showgrid=True, gridcolor="#eee", zeroline=False),
-                plot_bgcolor="white",
-                hovermode="x unified",
-            )
-
-            # IMPORTANT for Colab: display(fig) is more reliable than fig.show() inside Output
-            try:
-                from IPython.display import display as _display
-                _display(fig)
-            except Exception:
-                fig.show()
-
-    def _on_pair_change(change):
+    def on_pair_change(change):
         if change.get("name") == "value":
-            _render(change["new"])
+            set_chart(change["new"])
 
-    pair_selector.observe(_on_pair_change, names="value")
+    pair_selector.observe(on_pair_change, names="value")
+    set_chart(pair_selector.value)
 
-    # initial draw
-    _render(pair_selector.value)
-
-    return widgets.VBox([pair_selector, status, out])
+    return widgets.VBox([pair_selector, status, fig])
 
 
 # ----------------------------
