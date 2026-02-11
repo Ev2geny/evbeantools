@@ -156,19 +156,19 @@ def make_price_history_widget(
     - Converts dates to ISO strings for safe transport/rendering.
     """
     # --- Colab: enable widget manager if available (safe no-op elsewhere) ---
-    try:
-        from google.colab import output as _colab_output  # type: ignore
-        _colab_output.enable_custom_widget_manager()
-    except Exception:
-        pass
+    # try:
+    #     from google.colab import output as _colab_output  # type: ignore
+    #     _colab_output.enable_custom_widget_manager()
+    # except Exception:
+    #     pass
 
     # --- Plotly renderer: prefer 'colab' if running in Colab, else leave default ---
-    try:
-        import plotly.io as pio
-        if "google.colab" in sys.modules:
-            pio.renderers.default = "colab"
-    except Exception:
-        pass
+    # try:
+    #     import plotly.io as pio
+    #     if "google.colab" in sys.modules:
+    #         pio.renderers.default = "colab"
+    # except Exception:
+    #     pass
 
     available_pairs = sorted(price_map.keys(), key=lambda x: (x[0], x[1]))
     dropdown_width = "50%"
@@ -247,11 +247,13 @@ def make_price_history_widget(
             )
 
             # IMPORTANT for Colab: display(fig) is more reliable than fig.show() inside Output
-            try:
-                from IPython.display import display as _display
-                _display(fig)
-            except Exception:
-                fig.show()
+            # try:
+            #     from IPython.display import display as _display
+            #     _display(fig)
+            # except Exception:
+            #     fig.show()
+            
+            fig.show()
 
     def _on_pair_change(change):
         if change.get("name") == "value":
