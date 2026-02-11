@@ -156,7 +156,7 @@ def make_price_history_widget(
     - Converts dates to ISO strings for safe transport/rendering.
     """
     # --- Colab: enable widget manager if available (safe no-op elsewhere) ---
-<<<<<<< HEAD
+
     # try:
     #     from google.colab import output as _colab_output  # type: ignore
     #     _colab_output.enable_custom_widget_manager()
@@ -170,7 +170,7 @@ def make_price_history_widget(
     #         pio.renderers.default = "colab"
     # except Exception:
     #     pass
-=======
+
     try:
         from google.colab import output as _colab_output  # type: ignore
         _colab_output.enable_custom_widget_manager()
@@ -184,7 +184,7 @@ def make_price_history_widget(
             pio.renderers.default = "colab"
     except Exception:
         pass
->>>>>>> a36173f1a98f92d2488dc4d7dcb93a9f4499f0aa
+
 
     available_pairs = sorted(price_map.keys(), key=lambda x: (x[0], x[1]))
     dropdown_width = "50%"
