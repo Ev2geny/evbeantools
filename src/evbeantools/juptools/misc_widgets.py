@@ -92,21 +92,37 @@ class DateRangeWidget(widgets.HBox):
             readout=False,
         )
 
-        # --- Labels at the ends of the bar ---
+        # --- Labels above the bar (selected range) ---
+        self._sel_start_lbl = widgets.HTML(
+            "<span style='font-size: 11px; color: #555;'>—</span>"
+        )
+        self._sel_end_lbl = widgets.HTML(
+            "<span style='font-size: 11px; color: #555; float:right'>—</span>"
+        )
+
+        sel_row = widgets.HBox(
+            [self._sel_start_lbl, widgets.HTML("&nbsp;"), self._sel_end_lbl],
+            layout=widgets.Layout(justify_content="space-between"),
+        )
+
+        # --- Labels below the bar (absolute bounds) ---
         min_lbl = widgets.HTML(
-            f"<span style='font-size: 11px;'>{min_date.isoformat()}</span>"
+            f"<span style='font-size: 11px; font-weight: bold;'>{min_date.isoformat()}</span>"
         )
         max_lbl = widgets.HTML(
-            f"<span style='font-size: 11px; float:right'>{max_date.isoformat()}</span>"
+            f"<span style='font-size: 11px; font-weight: bold; float:right'>{max_date.isoformat()}</span>"
+        )
+
+        bounds_row = widgets.HBox(
+            [min_lbl, widgets.HTML("&nbsp;"), max_lbl],
+            layout=widgets.Layout(justify_content="space-between"),
         )
 
         range_bar_box = widgets.VBox(
             [
-                widgets.HBox(
-                    [min_lbl, widgets.HTML("&nbsp;"), max_lbl],
-                    layout=widgets.Layout(justify_content="space-between"),
-                ),
+                sel_row,
                 self._range_bar,
+                bounds_row,
             ],
             layout=widgets.Layout(width="520px"),
         )
@@ -128,6 +144,20 @@ class DateRangeWidget(widgets.HBox):
     # ------------------------------------------------------------------
     # Sync helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _date_label(d: datetime.date | None) -> str:
+        return d.isoformat() if d is not None else "—"
+
+    def _update_sel_labels(self):
+        """Refresh the 'selected start / end' labels above the bar."""
+        s, e = self.value
+        self._sel_start_lbl.value = (
+            f"<span style='font-size: 11px; color: #555;'>{self._date_label(s)}</span>"
+        )
+        self._sel_end_lbl.value = (
+            f"<span style='font-size: 11px; color: #555; float:right'>{self._date_label(e)}</span>"
+        )
 
     def _coerce(self, d: datetime.date | None) -> datetime.date | None:
         """Clamp *d* to [min_date, max_date], leaving ``None`` untouched."""
@@ -158,6 +188,7 @@ class DateRangeWidget(widgets.HBox):
 
             # Propagate to public trait
             self.value = (s, e)
+            self._update_sel_labels()
         finally:
             self._sync_busy = False
 
@@ -172,6 +203,7 @@ class DateRangeWidget(widgets.HBox):
             self._end_dp.value = e
 
             self.value = (s, e)
+            self._update_sel_labels()
         finally:
             self._sync_busy = False
 
@@ -192,5 +224,6 @@ class DateRangeWidget(widgets.HBox):
             e_bar = e if e is not None else self._max_date
             if s_bar <= e_bar:
                 self._range_bar.value = (s_bar, e_bar)
+            self._update_sel_labels()
         finally:
             self._sync_busy = False
