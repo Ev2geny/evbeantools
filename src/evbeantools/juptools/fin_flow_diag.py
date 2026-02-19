@@ -353,6 +353,97 @@ def get_ledger_dates_range(entries) -> tuple[datetime.date, datetime.date]:
     return min_date, max_date
 
 
+def get_sankey_figure_from_entries(entries: Iterable,
+                                    currency: str,
+                                    *,
+                                    start_date: datetime.date | None = None,
+                                    end_date: datetime.date | None = None,
+                                    income_len: int = 100,
+                                    expenses_len: int = 100,
+                                    equity_len: int = 100,
+                                    assets_len: int = 100,
+                                    liabilities_len: int = 100,
+                                    height: int = 600) -> go.Figure:
+    """Build a Plotly Sankey figure showing financial flows between accounts.
+
+    This is a standalone helper that can be used directly in a Jupyter notebook
+    or called internally by :func:`show_interactive_fin_flow_diag`.
+
+    Parameters:
+        entries:  Iterable of beancount entries (as returned by ``load_string`` / ``load_file``).
+        currency: The currency to visualise.
+        start_date: Optional start date – transactions before this date are excluded.
+        end_date:   Optional end date   – transactions on or after this date are excluded.
+        income_len:      Account-hierarchy depth for Income accounts      (1-5, default 100 = full).
+        expenses_len:    Account-hierarchy depth for Expenses accounts    (1-5, default 100 = full).
+        equity_len:      Account-hierarchy depth for Equity accounts      (1-5, default 100 = full).
+        assets_len:      Account-hierarchy depth for Assets accounts      (1-5, default 100 = full).
+        liabilities_len: Account-hierarchy depth for Liabilities accounts (1-5, default 100 = full).
+        height: Figure height in pixels (default 600).
+
+    Returns:
+        A ``plotly.graph_objects.Figure`` containing the Sankey diagram.
+    """
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ValueError(
+            f"start_date ({start_date}) must be <= end_date ({end_date})."
+        )
+
+    sankey_data = get_sankey_data_from_entries(
+        entries,
+        currency,
+        start_date=start_date,
+        end_date=end_date,
+        income_len=income_len,
+        expenses_len=expenses_len,
+        assets_len=assets_len,
+        equity_len=equity_len,
+        liabilities_len=liabilities_len,
+    )
+
+    required = {"label", "color", "source", "target", "value"}
+    missing = required - set(sankey_data.keys())
+    if missing:
+        raise KeyError(f"get_sankey_data_from_entries() missing keys: {sorted(missing)}")
+
+    link_colors = [
+        transparent(sankey_data["color"][i], alpha=0.35) for i in sankey_data["source"]
+    ]
+
+    fig = go.Figure(
+        data=[
+            go.Sankey(
+                node=dict(
+                    label=sankey_data["label"],
+                    color=sankey_data["color"],
+                    pad=15,
+                    thickness=20,
+                ),
+                link=dict(
+                    source=sankey_data["source"],
+                    target=sankey_data["target"],
+                    value=sankey_data["value"],
+                    color=link_colors,
+                ),
+            )
+        ]
+    )
+
+    date_part = []
+    if start_date:
+        date_part.append(f"from {start_date.isoformat()}")
+    if end_date:
+        date_part.append(f"to {end_date.isoformat()}")
+    date_suffix = f" ({', '.join(date_part)})" if date_part else ""
+
+    fig.update_layout(
+        title_text=f"Financial flow — {currency}{date_suffix}",
+        height=height,
+    )
+
+    return fig
+
+
 def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> None:
     """
     Interactive Sankey + date controls in Jupyter.
@@ -512,12 +603,7 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
             start_date = _coerce_to_bounds(start_dp.value)
             end_date = _coerce_to_bounds(end_dp.value)
 
-            if start_date is not None and end_date is not None and start_date > end_date:
-                raise ValueError(
-                    f"start_date ({start_date}) must be <= end_date ({end_date})."
-                )
-
-            sankey_data = get_sankey_data_from_entries(
+            fig = get_sankey_figure_from_entries(
                 entries,
                 currency_dd.value,
                 start_date=start_date,
@@ -527,46 +613,6 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
                 assets_len=assets_sl.value,
                 equity_len=equity_sl.value,
                 liabilities_len=liabilities_sl.value,
-            )
-
-            required = {"label", "color", "source", "target", "value"}
-            missing = required - set(sankey_data.keys())
-            if missing:
-                raise KeyError(f"get_sankey_data_from_entries() missing keys: {sorted(missing)}")
-
-            link_colors = [
-                transparent(sankey_data["color"][i], alpha=0.35) for i in sankey_data["source"]
-            ]
-
-            fig = go.Figure(
-                data=[
-                    go.Sankey(
-                        node=dict(
-                            label=sankey_data["label"],
-                            color=sankey_data["color"],
-                            pad=15,
-                            thickness=20,
-                        ),
-                        link=dict(
-                            source=sankey_data["source"],
-                            target=sankey_data["target"],
-                            value=sankey_data["value"],
-                            color=link_colors,
-                        ),
-                    )
-                ]
-            )
-
-            date_part = []
-            if start_date:
-                date_part.append(f"from {start_date.isoformat()}")
-            if end_date:
-                date_part.append(f"to {end_date.isoformat()}")
-            date_suffix = f" ({', '.join(date_part)})" if date_part else ""
-
-            fig.update_layout(
-                title_text=f"Financial flow — {currency_dd.value}{date_suffix}",
-                height=600,
             )
             fig.show()
 
