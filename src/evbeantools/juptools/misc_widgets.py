@@ -4,7 +4,7 @@ import traitlets
 import ipywidgets as widgets
 
 
-class DateRangeWidget(widgets.HBox):
+class DateRangeWidget(widgets.VBox):
     """A composite date-range picker with two DatePickers and a SelectionRangeSlider.
 
     All three sub-widgets are kept in sync automatically: dragging the slider
@@ -127,9 +127,12 @@ class DateRangeWidget(widgets.HBox):
             layout=widgets.Layout(width="520px"),
         )
 
-        # --- Build HBox children ---
+        # --- Row 1: date pickers side-by-side ---
+        pickers_row = widgets.HBox([self._start_dp, self._end_dp])
+
+        # --- Build VBox children ---
         super().__init__(
-            children=[self._start_dp, self._end_dp, range_bar_box],
+            children=[pickers_row, range_bar_box],
             **kwargs,
         )
 

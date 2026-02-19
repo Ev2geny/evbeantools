@@ -486,14 +486,15 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
             description=f"{name}:",
             continuous_update=False,
             readout=True,
-            layout=widgets.Layout(width="520px"),
+            style={"description_width": "120px"},
+            layout=widgets.Layout(width="600px"),
         )
 
-    income_sl = _mk_slider("Income", 1, 1, 5)
-    expenses_sl = _mk_slider("Expenses", 1, 1, 5)
-    assets_sl = _mk_slider("Assets", 1, 1, 5)
-    equity_sl = _mk_slider("Equity", 1, 1, 5)
-    liabilities_sl = _mk_slider("Liabilities", 1, 1, 5)
+    income_sl = _mk_slider("Income depth", 1, 1, 5)
+    expenses_sl = _mk_slider("Expenses depth", 1, 1, 5)
+    assets_sl = _mk_slider("Assets depth", 1, 1, 5)
+    equity_sl = _mk_slider("Equity depth", 1, 1, 5)
+    liabilities_sl = _mk_slider("Liabilities depth", 1, 1, 5)
 
     date_range_widget = DateRangeWidget(min_date, max_date)
 
