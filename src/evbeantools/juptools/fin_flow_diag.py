@@ -15,12 +15,13 @@ from beancount.core.account import root
 
 from evbeantools.utils import  print_entries_to_string, print_errors_to_string
 
-# -----------------------------------------------------------------------------
-# Sankey diagram data preparation -------------------------------------------
-#
+# ################################
+# This part is not related to jupyter widgets, it's just data processing and figure building logic.
+# It can be used in a standalone way, without any widgets
+# ################################
 
-# Data structure, which is used to collect information about postings, which is later user to prepare data for
-# sankey diagram
+
+
 
 PostingsData = dict[Account, Decimal]
 
@@ -325,14 +326,6 @@ def get_sankey_data_from_entries(entries: Iterable,
     return sankey_data
 
 
-def transparent(color: str, alpha: float = 0.4) -> str:
-    """
-    Convert any Matplotlib-compatible color into a Plotly/CSS rgba() string.
-    """
-    rgba = mcolors.to_rgba(color, alpha)  # (r,g,b,a) floats in [0,1]
-    return f"rgba({int(rgba[0]*255)},{int(rgba[1]*255)},{int(rgba[2]*255)},{alpha})"
-
-
 def get_ledger_dates_range(entries) -> tuple[datetime.date, datetime.date]:
     """
     Scans entries to find the earliest and latest transaction dates.
@@ -351,6 +344,18 @@ def get_ledger_dates_range(entries) -> tuple[datetime.date, datetime.date]:
         raise ValueError("No dated entries found to determine date range.")
 
     return min_date, max_date
+
+
+########################################################
+ # The plotly widgets section starts here
+########################################################
+
+def transparent(color: str, alpha: float = 0.4) -> str:
+    """
+    Convert any Matplotlib-compatible color into a Plotly/CSS rgba() string.
+    """
+    rgba = mcolors.to_rgba(color, alpha)  # (r,g,b,a) floats in [0,1]
+    return f"rgba({int(rgba[0]*255)},{int(rgba[1]*255)},{int(rgba[2]*255)},{alpha})"
 
 
 def get_sankey_figure_from_entries(entries: Iterable,
@@ -444,50 +449,25 @@ def get_sankey_figure_from_entries(entries: Iterable,
     return fig
 
 
-def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> None:
+def get_date_range_picker_with_range_bar(
+    min_date: datetime.date,
+    max_date: datetime.date,
+) -> tuple[widgets.HBox, widgets.DatePicker, widgets.DatePicker, widgets.SelectionRangeSlider]:
+    """Create a date-range picker composed of two DatePickers and a SelectionRangeSlider.
+
+    The three widgets are kept in sync automatically: dragging the slider
+    updates the pickers and vice-versa.
+
+    Parameters:
+        min_date: Earliest selectable date.
+        max_date: Latest selectable date.
+
+    Returns:
+        A tuple of ``(widget, start_dp, end_dp, range_bar)`` where
+        *widget* is the ready-to-display ``HBox`` and the remaining items
+        are the individual sub-widgets so the caller can read their values
+        and attach additional observers.
     """
-    Interactive Sankey + date controls in Jupyter.
-
-    Improvement included:
-      - a horizontal range bar (SelectionRangeSlider) to the right of Start/End pickers
-      - left label = ledger min date, right label = ledger max date
-      - moving either the DatePickers OR the bar keeps the other in sync
-      - start/end markers are naturally shown as the slider handles
-    """
-    if not currencies:
-        raise ValueError("currencies must be a non-empty list of currency codes/strings.")
-
-    min_date, max_date = get_ledger_dates_range(entries)
-
-    # ----------------------------
-    # Controls (widgets)
-    # ----------------------------
-
-    currency_dd = widgets.Dropdown(
-        options=currencies,
-        value=currencies[0],
-        description="Currency:",
-        layout=widgets.Layout(width="260px"),
-    )
-
-    def _mk_slider(name: str, value: int, min_: int = 1, max_: int = 5, step: int = 1):
-        return widgets.IntSlider(
-            value=value,
-            min=min_,
-            max=max_,
-            step=step,
-            description=f"{name}:",
-            continuous_update=False,
-            readout=True,
-            layout=widgets.Layout(width="520px"),
-        )
-
-    income_sl = _mk_slider("Income", 1, 1, 5)
-    expenses_sl = _mk_slider("Expenses", 1, 1, 5)
-    assets_sl = _mk_slider("Assets", 1, 1, 5)
-    equity_sl = _mk_slider("Equity", 1, 1, 5)
-    liabilities_sl = _mk_slider("Liabilities", 1, 1, 5)
-
     # Two DatePickers (fine-grained picking)
     start_dp = widgets.DatePicker(
         description="Start:",
@@ -529,9 +509,6 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
         ],
         layout=widgets.Layout(width="520px"),
     )
-
-    title = widgets.HTML("<b>Interactive financial flow Sankey</b>")
-    out = widgets.Output()
 
     # ----------------------------
     # Sync logic: DatePickers <-> range_bar
@@ -592,6 +569,62 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
     end_dp.observe(_sync_from_pickers, names="value")
     range_bar.observe(_sync_from_bar, names="value")
 
+    # Initialize bar/pickers consistency
+    _sync_from_pickers()
+
+    widget = widgets.HBox([start_dp, end_dp, range_bar_box])
+    return widget, start_dp, end_dp, range_bar
+
+
+def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> None:
+    """
+    Interactive Sankey + date controls in Jupyter.
+
+    Improvement included:
+      - a horizontal range bar (SelectionRangeSlider) to the right of Start/End pickers
+      - left label = ledger min date, right label = ledger max date
+      - moving either the DatePickers OR the bar keeps the other in sync
+      - start/end markers are naturally shown as the slider handles
+    """
+    if not currencies:
+        raise ValueError("currencies must be a non-empty list of currency codes/strings.")
+
+    min_date, max_date = get_ledger_dates_range(entries)
+
+    # ----------------------------
+    # Controls (widgets)
+    # ----------------------------
+
+    currency_dd = widgets.Dropdown(
+        options=currencies,
+        value=currencies[0],
+        description="Currency:",
+        layout=widgets.Layout(width="260px"),
+    )
+
+    def _mk_slider(name: str, value: int, min_: int = 1, max_: int = 5, step: int = 1):
+        return widgets.IntSlider(
+            value=value,
+            min=min_,
+            max=max_,
+            step=step,
+            description=f"{name}:",
+            continuous_update=False,
+            readout=True,
+            layout=widgets.Layout(width="520px"),
+        )
+
+    income_sl = _mk_slider("Income", 1, 1, 5)
+    expenses_sl = _mk_slider("Expenses", 1, 1, 5)
+    assets_sl = _mk_slider("Assets", 1, 1, 5)
+    equity_sl = _mk_slider("Equity", 1, 1, 5)
+    liabilities_sl = _mk_slider("Liabilities", 1, 1, 5)
+
+    date_range_widget, start_dp, end_dp, range_bar = get_date_range_picker_with_range_bar(min_date, max_date)
+
+    title = widgets.HTML("<b>Interactive financial flow Sankey</b>")
+    out = widgets.Output()
+
     # ----------------------------
     # Render callback
     # ----------------------------
@@ -599,9 +632,8 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
         with out:
             out.clear_output(wait=True)
 
-            # We will pass the pickers' values through as-is (None allowed by your API)
-            start_date = _coerce_to_bounds(start_dp.value)
-            end_date = _coerce_to_bounds(end_dp.value)
+            start_date = start_dp.value
+            end_date = end_dp.value
 
             fig = get_sankey_figure_from_entries(
                 entries,
@@ -640,7 +672,7 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
             title,
             widgets.HBox([currency_dd]),
             # Put the bar to the RIGHT of the date pickers
-            widgets.HBox([start_dp, end_dp, range_bar_box]),
+            date_range_widget,
             income_sl,
             expenses_sl,
             assets_sl,
@@ -651,6 +683,5 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
 
     display(widgets.VBox([controls, out]))
 
-    # Initialize bar/pickers consistency + initial render
-    _sync_from_pickers()
+    # Initial render
     _render()
