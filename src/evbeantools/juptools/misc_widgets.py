@@ -1,130 +1,196 @@
 import datetime
 
+import traitlets
 import ipywidgets as widgets
 
 
-def get_date_range_picker_with_range_bar(
-    min_date: datetime.date,
-    max_date: datetime.date,
-) -> tuple[widgets.HBox, widgets.DatePicker, widgets.DatePicker, widgets.SelectionRangeSlider]:
-    """Create a date-range picker composed of two DatePickers and a SelectionRangeSlider.
+class DateRangeWidget(widgets.HBox):
+    """A composite date-range picker with two DatePickers and a SelectionRangeSlider.
 
-    The three widgets are kept in sync automatically: dragging the slider
+    All three sub-widgets are kept in sync automatically: dragging the slider
     updates the pickers and vice-versa.
+
+    Observable trait:
+        value: ``tuple(datetime.date | None, datetime.date | None)`` —
+            the currently selected ``(start_date, end_date)`` pair.
+            Defaults to ``(None, None)`` (meaning "no constraint").
+
+    Convenience properties:
+        start_date: shortcut for ``value[0]``.
+        end_date:   shortcut for ``value[1]``.
+
+    Observe changes with the standard ipywidgets pattern::
+
+        drw = DateRangeWidget(min_date, max_date)
+        drw.observe(callback, names="value")
 
     Parameters:
         min_date: Earliest selectable date.
         max_date: Latest selectable date.
-
-    Returns:
-        A tuple of ``(widget, start_dp, end_dp, range_bar)`` where
-        *widget* is the ready-to-display ``HBox`` and the remaining items
-        are the individual sub-widgets so the caller can read their values
-        and attach additional observers.
     """
-    # Two DatePickers (fine-grained picking)
-    start_dp = widgets.DatePicker(
-        description="Start:",
-        value=None,
-        layout=widgets.Layout(width="220px"),
-        min=min_date,
-        max=max_date,
-    )
-    end_dp = widgets.DatePicker(
-        description="End:",
-        value=None,
-        layout=widgets.Layout(width="220px"),
-        min=min_date,
-        max=max_date,
+
+    # Single observable trait — a tuple of (start_date, end_date)
+    value = traitlets.Tuple(
+        traitlets.Instance(datetime.date, allow_none=True),
+        traitlets.Instance(datetime.date, allow_none=True),
+        default_value=(None, None),
     )
 
-    # Horizontal range bar that shows BOTH markers as draggable handles.
-    # We build it on a dense list of dates so the handles snap cleanly.
-    day_count = (max_date - min_date).days
-    all_days = [min_date + datetime.timedelta(days=i) for i in range(day_count + 1)]
+    # ------------------------------------------------------------------
+    # Convenience properties
+    # ------------------------------------------------------------------
 
-    range_bar = widgets.SelectionRangeSlider(
-        options=all_days,                 # discrete dates
-        value=(min_date, max_date),       # default full ledger range
-        description="",                   # we'll show labels separately
-        continuous_update=False,
-        layout=widgets.Layout(width="520px"),
-        readout=False,                    # we use Start/End DatePickers as readouts
-    )
+    @property
+    def start_date(self) -> datetime.date | None:
+        """The currently selected start date (shortcut for ``value[0]``)."""
+        return self.value[0]
 
-    # Labels at the ends of the bar
-    min_lbl = widgets.HTML(f"<span style='font-size: 11px;'>{min_date.isoformat()}</span>")
-    max_lbl = widgets.HTML(f"<span style='font-size: 11px; float:right'>{max_date.isoformat()}</span>")
+    @start_date.setter
+    def start_date(self, d: datetime.date | None):
+        self.value = (d, self.value[1])
 
-    range_bar_box = widgets.VBox(
-        [
-            widgets.HBox([min_lbl, widgets.HTML("&nbsp;"), max_lbl], layout=widgets.Layout(justify_content="space-between")),
-            range_bar,
-        ],
-        layout=widgets.Layout(width="520px"),
-    )
+    @property
+    def end_date(self) -> datetime.date | None:
+        """The currently selected end date (shortcut for ``value[1]``)."""
+        return self.value[1]
 
-    # ----------------------------
-    # Sync logic: DatePickers <-> range_bar
-    # ----------------------------
-    _sync_guard = {"busy": False}
+    @end_date.setter
+    def end_date(self, d: datetime.date | None):
+        self.value = (self.value[0], d)
 
-    def _coerce_to_bounds(d: datetime.date | None) -> datetime.date | None:
-        """Clamp date to [min_date, max_date], leaving None untouched."""
+    def __init__(self, min_date: datetime.date, max_date: datetime.date, **kwargs):
+        self._min_date = min_date
+        self._max_date = max_date
+        self._sync_busy = False
+
+        # --- DatePickers ---
+        self._start_dp = widgets.DatePicker(
+            description="Start:",
+            value=None,
+            layout=widgets.Layout(width="220px"),
+            min=min_date,
+            max=max_date,
+        )
+        self._end_dp = widgets.DatePicker(
+            description="End:",
+            value=None,
+            layout=widgets.Layout(width="220px"),
+            min=min_date,
+            max=max_date,
+        )
+
+        # --- SelectionRangeSlider ---
+        day_count = (max_date - min_date).days
+        all_days = [min_date + datetime.timedelta(days=i) for i in range(day_count + 1)]
+
+        self._range_bar = widgets.SelectionRangeSlider(
+            options=all_days,
+            value=(min_date, max_date),
+            description="",
+            continuous_update=False,
+            layout=widgets.Layout(width="520px"),
+            readout=False,
+        )
+
+        # --- Labels at the ends of the bar ---
+        min_lbl = widgets.HTML(
+            f"<span style='font-size: 11px;'>{min_date.isoformat()}</span>"
+        )
+        max_lbl = widgets.HTML(
+            f"<span style='font-size: 11px; float:right'>{max_date.isoformat()}</span>"
+        )
+
+        range_bar_box = widgets.VBox(
+            [
+                widgets.HBox(
+                    [min_lbl, widgets.HTML("&nbsp;"), max_lbl],
+                    layout=widgets.Layout(justify_content="space-between"),
+                ),
+                self._range_bar,
+            ],
+            layout=widgets.Layout(width="520px"),
+        )
+
+        # --- Build HBox children ---
+        super().__init__(
+            children=[self._start_dp, self._end_dp, range_bar_box],
+            **kwargs,
+        )
+
+        # --- Internal sync wiring ---
+        self._start_dp.observe(self._sync_from_pickers, names="value")
+        self._end_dp.observe(self._sync_from_pickers, names="value")
+        self._range_bar.observe(self._sync_from_bar, names="value")
+
+        # value trait changed programmatically → update pickers and bar
+        self.observe(self._sync_from_value, names="value")
+
+    # ------------------------------------------------------------------
+    # Sync helpers
+    # ------------------------------------------------------------------
+
+    def _coerce(self, d: datetime.date | None) -> datetime.date | None:
+        """Clamp *d* to [min_date, max_date], leaving ``None`` untouched."""
         if d is None:
             return None
-        if d < min_date:
-            return min_date
-        if d > max_date:
-            return max_date
+        if d < self._min_date:
+            return self._min_date
+        if d > self._max_date:
+            return self._max_date
         return d
 
-    def _sync_from_pickers(*_):
-        """
-        When user changes start_dp/end_dp, update range_bar.
-        If either picker is None, we interpret it as full bound (min/max) for the bar.
-        """
-        if _sync_guard["busy"]:
+    def _sync_from_pickers(self, *_):
+        """DatePickers changed → update range_bar + value trait."""
+        if self._sync_busy:
             return
-        _sync_guard["busy"] = True
+        self._sync_busy = True
         try:
-            s = _coerce_to_bounds(start_dp.value)
-            e = _coerce_to_bounds(end_dp.value)
+            s = self._coerce(self._start_dp.value)
+            e = self._coerce(self._end_dp.value)
 
-            s_for_bar = s if s is not None else min_date
-            e_for_bar = e if e is not None else max_date
+            s_bar = s if s is not None else self._min_date
+            e_bar = e if e is not None else self._max_date
 
-            # Maintain ordering
-            if s_for_bar > e_for_bar:
-                # If user picked an invalid range, don't update bar; let render raise.
-                _sync_guard["busy"] = False
+            if s_bar > e_bar:
                 return
 
-            range_bar.value = (s_for_bar, e_for_bar)
-        finally:
-            _sync_guard["busy"] = False
+            self._range_bar.value = (s_bar, e_bar)
 
-    def _sync_from_bar(change):
-        """
-        When user drags the range_bar handles, update start_dp/end_dp.
-        We always set pickers to concrete dates (not None) because the bar is always concrete.
-        """
-        if _sync_guard["busy"]:
+            # Propagate to public trait
+            self.value = (s, e)
+        finally:
+            self._sync_busy = False
+
+    def _sync_from_bar(self, change):
+        """Range bar changed → update DatePickers + value trait."""
+        if self._sync_busy:
             return
-        _sync_guard["busy"] = True
+        self._sync_busy = True
         try:
             s, e = change["new"]
-            start_dp.value = s
-            end_dp.value = e
+            self._start_dp.value = s
+            self._end_dp.value = e
+
+            self.value = (s, e)
         finally:
-            _sync_guard["busy"] = False
+            self._sync_busy = False
 
-    start_dp.observe(_sync_from_pickers, names="value")
-    end_dp.observe(_sync_from_pickers, names="value")
-    range_bar.observe(_sync_from_bar, names="value")
+    def _sync_from_value(self, change):
+        """value trait changed programmatically → update pickers and bar."""
+        if self._sync_busy:
+            return
+        self._sync_busy = True
+        try:
+            s, e = change["new"]
+            s = self._coerce(s)
+            e = self._coerce(e)
 
-    # Initialize bar/pickers consistency
-    _sync_from_pickers()
+            self._start_dp.value = s
+            self._end_dp.value = e
 
-    widget = widgets.HBox([start_dp, end_dp, range_bar_box])
-    return widget, start_dp, end_dp, range_bar
+            s_bar = s if s is not None else self._min_date
+            e_bar = e if e is not None else self._max_date
+            if s_bar <= e_bar:
+                self._range_bar.value = (s_bar, e_bar)
+        finally:
+            self._sync_busy = False

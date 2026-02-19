@@ -14,7 +14,7 @@ from beancount.core.data import Transaction, Account
 from beancount.core.account import root
 
 from evbeantools.utils import  print_entries_to_string, print_errors_to_string
-from .misc_widgets import get_date_range_picker_with_range_bar
+from .misc_widgets import DateRangeWidget
 
 # ################################
 # This part is not related to jupyter widgets, it's just data processing and figure building logic.
@@ -495,7 +495,7 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
     equity_sl = _mk_slider("Equity", 1, 1, 5)
     liabilities_sl = _mk_slider("Liabilities", 1, 1, 5)
 
-    date_range_widget, start_dp, end_dp, range_bar = get_date_range_picker_with_range_bar(min_date, max_date)
+    date_range_widget = DateRangeWidget(min_date, max_date)
 
     title = widgets.HTML("<b>Interactive financial flow Sankey</b>")
     out = widgets.Output()
@@ -507,8 +507,8 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
         with out:
             out.clear_output(wait=True)
 
-            start_date = start_dp.value
-            end_date = end_dp.value
+            start_date = date_range_widget.start_date
+            end_date = date_range_widget.end_date
 
             fig = get_sankey_figure_from_entries(
                 entries,
@@ -528,9 +528,7 @@ def show_interactive_fin_flow_diag(entries: Iterable, currencies: list[str]) -> 
     # ----------------------------
     for w in (
         currency_dd,
-        start_dp,
-        end_dp,
-        range_bar,   # changing the bar also triggers redraw
+        date_range_widget,
         income_sl,
         expenses_sl,
         assets_sl,
