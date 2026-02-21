@@ -36,6 +36,7 @@ commodities_network_data_schema = Schema({
             Optional("directed_connections"): [Or(str, int)],
             Optional("special"): bool,
             Optional("special1"): bool,
+            Optional("special2"): bool,
         }
     })
 
@@ -173,6 +174,21 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0, n
             plot_bgcolor="white",
         ),
     )
+
+    # --- black dot overlay for "special2" nodes ---
+    dot_x = [float(x_nodes[id_to_index[nid]]) for nid in node_ids
+             if validated_data[nid].get("special2", False)]
+    dot_y = [float(y_nodes[id_to_index[nid]]) for nid in node_ids
+             if validated_data[nid].get("special2", False)]
+    if dot_x:
+        fig.add_trace(go.Scatter(
+            x=dot_x, y=dot_y,
+            mode="markers",
+            hoverinfo="none",
+            showlegend=False,
+            marker=dict(color="black", size=node_size * 0.35,
+                        line=dict(width=0)),
+        ))
 
     # --- add curved arrows for directed edges ---
     n_curve_pts = 60
