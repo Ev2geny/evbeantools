@@ -123,13 +123,6 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
     # Build a set of reverse pairs so we can detect A->B + B->A
     directed_set = set(directed_edges)
 
-    # Build a set of undirected edge pairs (normalised as frozensets)
-    undirected_set: set[frozenset] = set()
-    for source_id, attributes in validated_data.items():
-        for target_id in attributes["connections"]:
-            if target_id in id_to_index:
-                undirected_set.add(frozenset((source_id, target_id)))
-
     COLOR_DEFAULT = "navy"
     COLOR_SPECIAL = "firebrick"
     COLOR_DIRECTED = "rgba(200, 50, 50, 0.8)"
@@ -174,30 +167,57 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
         ),
     )
 
-    # --- add arrow annotations for directed edges ---
+    # --- add curved arrows for directed edges ---
+    n_curve_pts = 30
+    curve_bow = 0.15 * radius  # how far the arc bows away from the straight line
+
     for src_id, tgt_id in directed_edges:
         src_idx = id_to_index[src_id]
         tgt_idx = id_to_index[tgt_id]
         sx, sy = float(x_nodes[src_idx]), float(y_nodes[src_idx])
         tx, ty = float(x_nodes[tgt_idx]), float(y_nodes[tgt_idx])
 
-        # Offset arrows perpendicular to the edge so they don't overlap
-        # with the undirected line or a reverse directed arrow.
-        has_reverse = (tgt_id, src_id) in directed_set
-        has_undirected = frozenset((src_id, tgt_id)) in undirected_set
         dx, dy = tx - sx, ty - sy
         length = np.sqrt(dx**2 + dy**2)
-        if length > 0 and (has_reverse or has_undirected):
-            perp_x, perp_y = -dy / length, dx / length
-            offset = 0.04 * radius
-            sx += perp_x * offset
-            sy += perp_y * offset
-            tx += perp_x * offset
-            ty += perp_y * offset
+        if length == 0:
+            continue
 
+        # Perpendicular unit vector (points "left" of src→tgt)
+        perp_x, perp_y = -dy / length, dx / length
+
+        # Choose bow direction: when both A→B and B→A exist, bow in
+        # opposite directions (use node-id ordering to pick side).
+        # When only one directed edge exists, always bow the same way.
+        has_reverse = (tgt_id, src_id) in directed_set
+        if has_reverse:
+            sign = 1.0 if src_id < tgt_id else -1.0
+        else:
+            sign = 1.0
+
+        # Quadratic Bézier control point (midpoint shifted perpendicular)
+        mx, my = (sx + tx) / 2 + sign * curve_bow * perp_x, \
+                  (sy + ty) / 2 + sign * curve_bow * perp_y
+
+        # Generate curve points: B(t) = (1-t)²·S + 2(1-t)t·M + t²·T
+        t = np.linspace(0, 1, n_curve_pts)
+        bx = (1 - t)**2 * sx + 2 * (1 - t) * t * mx + t**2 * tx
+        by = (1 - t)**2 * sy + 2 * (1 - t) * t * my + t**2 * ty
+
+        # Draw the curved line (without the last couple of points so
+        # the annotation arrowhead doesn't overlap the curve end)
+        fig.add_trace(go.Scatter(
+            x=bx.tolist(), y=by.tolist(),
+            mode="lines",
+            line=dict(width=1.5, color=COLOR_DIRECTED),
+            hoverinfo="none",
+            showlegend=False,
+        ))
+
+        # Small annotation at the tip for the arrowhead.
+        # Use a short tail segment from the second-to-last curve point.
         fig.add_annotation(
-            x=tx, y=ty,
-            ax=sx, ay=sy,
+            x=float(bx[-1]), y=float(by[-1]),
+            ax=float(bx[-3]), ay=float(by[-3]),
             xref="x", yref="y",
             axref="x", ayref="y",
             showarrow=True,
@@ -205,8 +225,7 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
             arrowsize=1.5,
             arrowwidth=1.5,
             arrowcolor=COLOR_DIRECTED,
-            standoff=15,
-            startstandoff=15,
+            standoff=13,
         )
 
     # Wrap in widgets.Output + fig.show() instead of returning a bare
