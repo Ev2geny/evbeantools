@@ -35,6 +35,7 @@ commodities_network_data_schema = Schema({
             "connections": [Or(str, int)],
             Optional("directed_connections"): [Or(str, int)],
             Optional("special"): bool,
+            Optional("special1"): bool,
         }
     })
 
@@ -120,16 +121,24 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
             if target_id in id_to_index:
                 directed_edges.append((source_id, target_id))
 
-    COLOR_DEFAULT = "navy"
+    COLOR_DEFAULT = "lightblue"
     COLOR_SPECIAL = "firebrick"
     COLOR_DIRECTED = "green"
 
     node_labels: list[str] = []
     node_colors: list[str] = []
+    node_border_widths: list[int] = []
+    node_border_colors: list[str] = []
     for nid in node_ids:
         attr = validated_data[nid]
         node_labels.append(attr["name"])
         node_colors.append(COLOR_SPECIAL if attr.get("special", False) else COLOR_DEFAULT)
+        if attr.get("special1", False):
+            node_border_widths.append(4)
+            node_border_colors.append("black")
+        else:
+            node_border_widths.append(2)
+            node_border_colors.append("white")
 
     edge_trace = go.Scatter(
         x=edge_x, y=edge_y,
@@ -147,7 +156,7 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
         marker=dict(
             color=node_colors,
             size=25,
-            line=dict(width=2, color="white"),
+            line=dict(width=node_border_widths, color=node_border_colors),
         ),
     )
 
@@ -165,8 +174,13 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
     )
 
     # --- add curved arrows for directed edges ---
-    n_curve_pts = 30
+    n_curve_pts = 60
     curve_bow = 0.15 * radius  # how far the arc bows away from the straight line
+
+    # Approximate node marker radius in data-space units.
+    # marker size=25 → radius ~12.5 px; figure ~690 px across 2·radius
+    # data units → 12.5 / (690 / (2·radius)) ≈ 0.036·radius
+    node_data_radius = 0.04 * radius
 
     for src_id, tgt_id in directed_edges:
         src_idx = id_to_index[src_id]
@@ -194,6 +208,17 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
         bx = (1 - t)**2 * sx + 2 * (1 - t) * t * mx + t**2 * tx
         by = (1 - t)**2 * sy + 2 * (1 - t) * t * my + t**2 * ty
 
+        # Trim curve points that fall inside the source / target node
+        # markers so the arc starts and ends at the circle edge.
+        dist_from_src = np.sqrt((bx - sx)**2 + (by - sy)**2)
+        dist_from_tgt = np.sqrt((bx - tx)**2 + (by - ty)**2)
+        keep = (dist_from_src >= node_data_radius) & (dist_from_tgt >= node_data_radius)
+        bx = bx[keep]
+        by = by[keep]
+
+        if len(bx) < 3:
+            continue
+
         # Draw the curved line
         fig.add_trace(go.Scatter(
             x=bx.tolist(), y=by.tolist(),
@@ -205,10 +230,14 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
 
         # Arrowhead at the midpoint of the curve so the direction is
         # clearly visible (rather than hidden near the node marker).
-        mid = n_curve_pts // 2
+        mid = len(bx) // 2
+        # Use points further apart so the annotation arrow is large
+        # enough to be visible.
+        arrow_back = max(0, mid - 4)
+        arrow_front = min(len(bx) - 1, mid + 4)
         fig.add_annotation(
-            x=float(bx[mid + 1]), y=float(by[mid + 1]),
-            ax=float(bx[mid - 1]), ay=float(by[mid - 1]),
+            x=float(bx[arrow_front]), y=float(by[arrow_front]),
+            ax=float(bx[arrow_back]), ay=float(by[arrow_back]),
             xref="x", yref="y",
             axref="x", ayref="y",
             showarrow=True,
