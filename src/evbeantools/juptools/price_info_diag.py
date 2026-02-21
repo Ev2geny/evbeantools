@@ -194,8 +194,7 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
         bx = (1 - t)**2 * sx + 2 * (1 - t) * t * mx + t**2 * tx
         by = (1 - t)**2 * sy + 2 * (1 - t) * t * my + t**2 * ty
 
-        # Draw the curved line (without the last couple of points so
-        # the annotation arrowhead doesn't overlap the curve end)
+        # Draw the curved line
         fig.add_trace(go.Scatter(
             x=bx.tolist(), y=by.tolist(),
             mode="lines",
@@ -204,19 +203,20 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
             showlegend=False,
         ))
 
-        # Small annotation at the tip for the arrowhead.
-        # Use a short tail segment from the second-to-last curve point.
+        # Arrowhead at the midpoint of the curve so the direction is
+        # clearly visible (rather than hidden near the node marker).
+        mid = n_curve_pts // 2
         fig.add_annotation(
-            x=float(bx[-1]), y=float(by[-1]),
-            ax=float(bx[-3]), ay=float(by[-3]),
+            x=float(bx[mid + 1]), y=float(by[mid + 1]),
+            ax=float(bx[mid - 1]), ay=float(by[mid - 1]),
             xref="x", yref="y",
             axref="x", ayref="y",
             showarrow=True,
             arrowhead=3,
-            arrowsize=1.5,
-            arrowwidth=1.5,
+            arrowsize=2,
+            arrowwidth=2,
             arrowcolor=COLOR_DIRECTED,
-            standoff=13,
+            standoff=0,
         )
 
     # Wrap in widgets.Output + fig.show() instead of returning a bare
