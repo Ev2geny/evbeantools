@@ -33,6 +33,7 @@ commodities_network_data_schema = Schema({
         Or(str, int): {
             "name": str,
             "connections": [Or(str, int)],
+            Optional("directed_connections"): [Or(str, int)],
             Optional("special"): bool,
         }
     })
@@ -99,6 +100,7 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
     x_nodes = radius * np.cos(angles)
     y_nodes = radius * np.sin(angles)
 
+    # --- undirected edges ("connections") ---
     edge_x: list[float | None] = []
     edge_y: list[float | None] = []
 
@@ -110,8 +112,27 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
                 edge_x.extend([float(x_nodes[source_idx]), float(x_nodes[target_idx]), None])
                 edge_y.extend([float(y_nodes[source_idx]), float(y_nodes[target_idx]), None])
 
+    # --- directed edges ("directed_connections") ---
+    # Collect (source_id, target_id) pairs
+    directed_edges: list[tuple] = []
+    for source_id, attributes in validated_data.items():
+        for target_id in attributes.get("directed_connections", []):
+            if target_id in id_to_index:
+                directed_edges.append((source_id, target_id))
+
+    # Build a set of reverse pairs so we can detect A->B + B->A
+    directed_set = set(directed_edges)
+
+    # Build a set of undirected edge pairs (normalised as frozensets)
+    undirected_set: set[frozenset] = set()
+    for source_id, attributes in validated_data.items():
+        for target_id in attributes["connections"]:
+            if target_id in id_to_index:
+                undirected_set.add(frozenset((source_id, target_id)))
+
     COLOR_DEFAULT = "navy"
     COLOR_SPECIAL = "firebrick"
+    COLOR_DIRECTED = "rgba(200, 50, 50, 0.8)"
 
     node_labels: list[str] = []
     node_colors: list[str] = []
@@ -152,6 +173,41 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
             plot_bgcolor="white",
         ),
     )
+
+    # --- add arrow annotations for directed edges ---
+    for src_id, tgt_id in directed_edges:
+        src_idx = id_to_index[src_id]
+        tgt_idx = id_to_index[tgt_id]
+        sx, sy = float(x_nodes[src_idx]), float(y_nodes[src_idx])
+        tx, ty = float(x_nodes[tgt_idx]), float(y_nodes[tgt_idx])
+
+        # Offset arrows perpendicular to the edge so they don't overlap
+        # with the undirected line or a reverse directed arrow.
+        has_reverse = (tgt_id, src_id) in directed_set
+        has_undirected = frozenset((src_id, tgt_id)) in undirected_set
+        dx, dy = tx - sx, ty - sy
+        length = np.sqrt(dx**2 + dy**2)
+        if length > 0 and (has_reverse or has_undirected):
+            perp_x, perp_y = -dy / length, dx / length
+            offset = 0.04 * radius
+            sx += perp_x * offset
+            sy += perp_y * offset
+            tx += perp_x * offset
+            ty += perp_y * offset
+
+        fig.add_annotation(
+            x=tx, y=ty,
+            ax=sx, ay=sy,
+            xref="x", yref="y",
+            axref="x", ayref="y",
+            showarrow=True,
+            arrowhead=3,
+            arrowsize=1.5,
+            arrowwidth=1.5,
+            arrowcolor=COLOR_DIRECTED,
+            standoff=15,
+            startstandoff=15,
+        )
 
     # Wrap in widgets.Output + fig.show() instead of returning a bare
     # FigureWidget.  FigureWidget relies on the Jupyter comm protocol,
