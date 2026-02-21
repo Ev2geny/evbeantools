@@ -120,9 +120,6 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
             if target_id in id_to_index:
                 directed_edges.append((source_id, target_id))
 
-    # Build a set of reverse pairs so we can detect A->B + B->A
-    directed_set = set(directed_edges)
-
     COLOR_DEFAULT = "navy"
     COLOR_SPECIAL = "firebrick"
     COLOR_DIRECTED = "rgba(200, 50, 50, 0.8)"
@@ -182,21 +179,15 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
         if length == 0:
             continue
 
-        # Perpendicular unit vector (points "left" of src→tgt)
+        # Perpendicular unit vector (points "left" of src→tgt).
+        # When both A→B and B→A exist, the perpendicular naturally
+        # flips direction with the edge, so both arcs bow to opposite
+        # sides without any sign adjustment.
         perp_x, perp_y = -dy / length, dx / length
 
-        # Choose bow direction: when both A→B and B→A exist, bow in
-        # opposite directions (use node-id ordering to pick side).
-        # When only one directed edge exists, always bow the same way.
-        has_reverse = (tgt_id, src_id) in directed_set
-        if has_reverse:
-            sign = 1.0 if src_id < tgt_id else -1.0
-        else:
-            sign = 1.0
-
         # Quadratic Bézier control point (midpoint shifted perpendicular)
-        mx, my = (sx + tx) / 2 + sign * curve_bow * perp_x, \
-                  (sy + ty) / 2 + sign * curve_bow * perp_y
+        mx = (sx + tx) / 2 + curve_bow * perp_x
+        my = (sy + ty) / 2 + curve_bow * perp_y
 
         # Generate curve points: B(t) = (1-t)²·S + 2(1-t)t·M + t²·T
         t = np.linspace(0, 1, n_curve_pts)
