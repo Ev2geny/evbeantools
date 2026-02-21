@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pprint import pprint
 
 from typing import Any
 
@@ -28,15 +29,26 @@ def get_posting_currencies(entries) -> set[str]:
     return currencies
 
 
-def build_prices_graph_data(price_map, currencies=None, special_nodes=None) -> dict[str, dict[str, Any]]:
-    """Convert a Beancount PriceMap into a graph schema for visualization."""
+commodities_network_data_schema = Schema({
+        Or(str, int): {
+            "name": str,
+            "connections": [Or(str, int)],
+            Optional("special"): bool,
+        }
+    })
+
+def build_prices_graph_data(price_map, currencies=None, special_nodes=None) -> dict:
+    """Convert a Beancount PriceMap into a graph schema for visualization.
+     - price_map: 
+     Returns a dict, compliant with commodities_network_data_schema."""
+     
     if currencies is None:
         currencies = []
     if special_nodes is None:
         special_nodes = []
 
     special_set = set(special_nodes)
-    graph_data: dict[str, dict[str, Any]] = {}
+    graph_data: dict = {}
 
     # isolated nodes first
     for curr in currencies:
@@ -59,18 +71,18 @@ def build_prices_graph_data(price_map, currencies=None, special_nodes=None) -> d
 # Plotly-as-widget (NO fig.show)
 # ----------------------------
 
-def make_prices_circular_network_widget(graph_data, radius: float = 1.0) -> Widget:
-    """Return a Plotly FigureWidget showing a circular network."""
-    network_schema = Schema({
-        Or(str, int): {
-            "name": str,
-            "connections": [Or(str, int)],
-            Optional("special"): bool,
-        }
-    })
+def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -> Widget:
+    """Return a Plotly FigureWidget showing a circular network.
+     - graph_data: dict compliant with commodities_network_data_schema
+     - radius: controls the size of the circular layout
+     """
+    
+    pprint(graph_data)
+    
+    global commodities_network_data_schema 
 
     try:
-        validated_data = network_schema.validate(graph_data)
+        validated_data = commodities_network_data_schema.validate(graph_data)
     except SchemaError as e:
         return widgets.HTML(
             f"<pre style='color:#b00; white-space:pre-wrap;'>❌ Data Validation Error: {e}</pre>"
@@ -128,7 +140,7 @@ def make_prices_circular_network_widget(graph_data, radius: float = 1.0) -> Widg
         ),
     )
 
-    return go.FigureWidget(
+    fig = go.Figure(
         data=[edge_trace, node_trace],
         layout=go.Layout(
             title="Currency Price Map Network",
@@ -140,6 +152,17 @@ def make_prices_circular_network_widget(graph_data, radius: float = 1.0) -> Widg
             plot_bgcolor="white",
         ),
     )
+
+    # Wrap in widgets.Output + fig.show() instead of returning a bare
+    # FigureWidget.  FigureWidget relies on the Jupyter comm protocol,
+    # which has timing issues in VS Code — the frontend JS may not be
+    # ready when the comm message arrives, causing the diagram to
+    # silently not render.  A plain Figure inside Output is reliable
+    # everywhere (VS Code, JupyterLab, Colab).
+    out = widgets.Output()
+    with out:
+        fig.show()
+    return out
 
 
 def make_price_history_widget(
@@ -293,12 +316,19 @@ def show_interactive_price_info(entries, options: dict[str, Any]) -> Widget:
     )
 
     network_widget = make_prices_circular_network_widget(prices_graph_data, radius=radius)
+    
+    # print(network_widget.data)
+    
+    
     history_widget = make_price_history_widget(price_map)
 
     header_network = widgets.HTML(f"<h3 style='margin:0 0 8px 0;'>{title_network}</h3>")
     header_history = widgets.HTML(f"<h3 style='margin:16px 0 8px 0;'>{title_history}</h3>")
 
     return widgets.VBox(
-        [header_network, network_widget, header_history, history_widget],
+        [header_network, 
+         network_widget, 
+         header_history, 
+         history_widget],
         layout=widgets.Layout(width="100%"),
     )
