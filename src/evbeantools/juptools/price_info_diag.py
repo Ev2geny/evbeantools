@@ -73,10 +73,11 @@ def build_prices_graph_data(price_map, currencies=None, special_nodes=None) -> d
 # Plotly-as-widget (NO fig.show)
 # ----------------------------
 
-def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -> Widget:
+def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0, node_size: int = 25) -> Widget:
     """Return a Plotly FigureWidget showing a circular network.
      - graph_data: dict compliant with commodities_network_data_schema
      - radius: controls the size of the circular layout
+     - node_size: marker size in pixels (default 25)
      """
     
     pprint(graph_data)
@@ -155,7 +156,7 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
         hoverinfo="text",
         marker=dict(
             color=node_colors,
-            size=25,
+            size=node_size,
             line=dict(width=node_border_widths, color=node_border_colors),
         ),
     )
@@ -178,9 +179,11 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
     curve_bow = 0.15 * radius  # how far the arc bows away from the straight line
 
     # Approximate node marker radius in data-space units.
-    # marker size=25 → radius ~12.5 px; figure ~690 px across 2·radius
-    # data units → 12.5 / (690 / (2·radius)) ≈ 0.036·radius
-    node_data_radius = 0.04 * radius
+    # Default Plotly figure = 700 px wide, margins l=5 r=5 → plot area ~690 px.
+    # The plot spans from -radius to +radius → 2·radius data units = 690 px.
+    # marker radius in px = node_size/2, convert to data units, with a 1.15×
+    # safety factor so the curve visibly clears the circle edge.
+    node_data_radius = (node_size / 2) * (2 * radius / 690) * 1.15
 
     for src_id, tgt_id in directed_edges:
         src_idx = id_to_index[src_id]
