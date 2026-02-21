@@ -122,7 +122,7 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0) -
 
     COLOR_DEFAULT = "navy"
     COLOR_SPECIAL = "firebrick"
-    COLOR_DIRECTED = "rgba(200, 50, 50, 0.8)"
+    COLOR_DIRECTED = "green"
 
     node_labels: list[str] = []
     node_colors: list[str] = []
