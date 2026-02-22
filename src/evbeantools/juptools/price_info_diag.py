@@ -74,7 +74,7 @@ def build_prices_graph_data(price_map, currencies=None, special_nodes=None) -> d
 # Plotly-as-widget (NO fig.show)
 # ----------------------------
 
-def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0, node_size: int = 25) -> Widget:
+def make_prices_circular_network_widget(graph_data: dict, *, radius: float = 1.0, node_size: int = 35) -> Widget:
     """Return a Plotly FigureWidget showing a circular network.
      - graph_data: dict compliant with commodities_network_data_schema
      - radius: controls the size of the circular layout
@@ -276,7 +276,57 @@ def make_prices_circular_network_widget(graph_data: dict, radius: float = 1.0, n
     out = widgets.Output()
     with out:
         fig.show()
-    return out
+
+    # --- HTML legend ---
+    legend_html = widgets.HTML(f"""
+    <div style="display:flex; flex-wrap:wrap; gap:16px 32px; font:13px/1.6 sans-serif;
+                padding:6px 10px; border:1px solid #ddd; border-radius:6px;
+                background:#fafafa; margin-top:4px;">
+      <div style="font-weight:600; width:100%; margin-bottom:2px;">Legend</div>
+
+      <!-- Nodes -->
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="display:inline-block; width:18px; height:18px; border-radius:50%;
+                     background:{COLOR_DEFAULT}; border:2px solid white;"></span>
+        Normal node
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="display:inline-block; width:18px; height:18px; border-radius:50%;
+                     background:{COLOR_SPECIAL}; border:2px solid white;"></span>
+        Special node
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="display:inline-block; width:18px; height:18px; border-radius:50%;
+                     background:{COLOR_DEFAULT}; border:3px solid black;"></span>
+        Special1 node (thick border)
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="display:inline-block; width:18px; height:18px; border-radius:50%;
+                     background:{COLOR_DEFAULT}; border:2px solid white; position:relative;">
+          <span style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+                       width:7px; height:7px; border-radius:50%; background:black;"></span>
+        </span>
+        Special2 node (inner dot)
+      </div>
+
+      <!-- Edges -->
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="display:inline-block; width:28px; height:0; border-top:2px solid #888;"></span>
+        Non-directional connection
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="display:inline-block; width:28px; height:12px; position:relative;">
+          <svg viewBox="0 0 28 12" width="28" height="12" style="display:block;">
+            <path d="M0,6 Q14,0 28,6" fill="none" stroke="{COLOR_DIRECTED}" stroke-width="2"/>
+            <polygon points="24,4 28,6 24,8" fill="{COLOR_DIRECTED}"/>
+          </svg>
+        </span>
+        Directed connection
+      </div>
+    </div>
+    """)
+
+    return widgets.VBox([out, legend_html])
 
 
 def make_price_history_widget(
