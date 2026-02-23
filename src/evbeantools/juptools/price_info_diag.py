@@ -95,7 +95,11 @@ def make_prices_circular_network_widget(
     label_undirected: str = "Non-directional connection",
     label_directed: str = "Directed connection",
 ) -> Widget:
-    """Return a Plotly FigureWidget showing a circular network.
+    """Return a Plotly FigureWidget showing a circular network and a legend for it.  
+       Designed for beancount price/commodities visualization, but this function is generic 
+       and knows nothing about beancount. All beancount-specific things are provided in the 
+       graph_data and labels.
+       
      - graph_data: dict compliant with commodities_network_data_schema
      - radius: controls the size of the circular layout
      - node_size: marker size in pixels (default 35)
@@ -106,6 +110,7 @@ def make_prices_circular_network_widget(
      - label_undirected: legend text for undirected edges
      - label_directed: legend text for directed edges
      """
+    BASE_DIM = 600  # base figure dimension in pixels; multiplied by `radius`
     
     pprint(graph_data)
     
@@ -230,12 +235,17 @@ def make_prices_circular_network_widget(
             showlegend=False,
         ))
 
+    fig_width = int(BASE_DIM * radius)
+    fig_height = int(BASE_DIM * radius)
+
     fig = go.Figure(
         data=[edge_trace] + hover_edge_traces + [node_trace],
         layout=go.Layout(
             title="Currency Price Map Network",
             showlegend=False,
             hovermode="closest",
+            width=fig_width,
+            height=fig_height,
             margin=dict(b=20, l=5, r=5, t=40),
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, scaleanchor="x", scaleratio=1),
