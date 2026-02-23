@@ -200,7 +200,7 @@ def make_prices_circular_network_widget(
     node_data_radius = (node_size / 2) * (2 * radius / 690) * 1.15
 
     # --- self-loop for "special2" nodes (outer side of the virtual circuit) ---
-    loop_radius = 0.1 * radius
+    loop_radius = 0.15 * radius
     n_loop_pts = 80
 
     for nid in node_ids:
@@ -238,6 +238,32 @@ def make_prices_circular_network_widget(
             x=lx.tolist(), y=ly.tolist(),
             mode="lines",
             line=dict(width=1.5, color=COLOR_DIRECTED),
+            hoverinfo="none",
+            showlegend=False,
+        ))
+
+        # Arrowhead at the midpoint of the loop, pointing clockwise.
+        # Place a triangle marker on the arc, rotated to match the
+        # clockwise tangent so it sits on the curve (no chord effect).
+        mid = len(lx) // 2
+        prev_idx = min(len(lx) - 1, mid + 2)
+        next_idx = max(0, mid - 2)
+        tdx = float(lx[next_idx] - lx[prev_idx])
+        tdy = float(ly[next_idx] - ly[prev_idx])
+        tangent_angle = np.degrees(np.arctan2(tdy, tdx))
+        # triangle-up points at +y (90°); marker.angle rotates CW
+        marker_rotation = 90.0 - tangent_angle
+
+        fig.add_trace(go.Scatter(
+            x=[float(lx[mid])], y=[float(ly[mid])],
+            mode="markers",
+            marker=dict(
+                symbol="triangle-up",
+                size=12,
+                color=COLOR_DIRECTED,
+                angle=marker_rotation,
+                line=dict(width=0),
+            ),
             hoverinfo="none",
             showlegend=False,
         ))
@@ -350,6 +376,7 @@ def make_prices_circular_network_widget(
           <svg viewBox="0 0 24 30" width="24" height="30" style="display:block;">
             <circle cx="12" cy="20" r="8" fill="{COLOR_DEFAULT}" stroke="white" stroke-width="1.5"/>
             <path d="M8,14 C4,0 20,0 16,14" fill="none" stroke="{COLOR_DIRECTED}" stroke-width="1.5"/>
+            <polygon points="9,10 8,14 11.5,12" fill="{COLOR_DIRECTED}"/>
           </svg>
         </span>
         {label_special2}
