@@ -32,11 +32,19 @@ def get_posting_currencies(entries) -> set[str]:
 commodities_network_data_schema = Schema({
         Or(str, int): {
             "name": str,
-            "connections": [Or(str, int)],
-            Optional("directed_connections"): [Or(str, int)],
+            "connections": [{
+                "target": Or(str, int),
+                Optional("hoverinfo"): str,
+            }],
+            Optional("directed_connections"): [{
+                "target": Or(str, int),
+                Optional("hoverinfo"): str,
+            }],
             Optional("special"): bool,
             Optional("special1"): bool,
             Optional("special2"): bool,
+            Optional("hoverinfo"): str,
+            Optional("special2_hoverinfo"): str,
         }
     })
 
@@ -64,8 +72,9 @@ def build_prices_graph_data(price_map, currencies=None, special_nodes=None) -> d
         if quote not in graph_data:
             graph_data[quote] = {"name": quote, "connections": [], "special": quote in special_set}
 
-        if quote not in graph_data[base]["connections"]:
-            graph_data[base]["connections"].append(quote)
+        existing_targets = [c["target"] for c in graph_data[base]["connections"]]
+        if quote not in existing_targets:
+            graph_data[base]["connections"].append({"target": quote})
 
     return graph_data
 
@@ -123,34 +132,45 @@ def make_prices_circular_network_widget(
     # --- undirected edges ("connections") ---
     edge_x: list[float | None] = []
     edge_y: list[float | None] = []
+    # Build per-segment hover lookup: segment index → hover text
+    undirected_hover: dict[int, str] = {}
+    undirected_seg_idx = 0
 
     for source_id, attributes in validated_data.items():
         source_idx = id_to_index[source_id]
-        for target_id in attributes["connections"]:
+        for conn in attributes["connections"]:
+            target_id = conn["target"]
             if target_id in id_to_index:
                 target_idx = id_to_index[target_id]
                 edge_x.extend([float(x_nodes[source_idx]), float(x_nodes[target_idx]), None])
                 edge_y.extend([float(y_nodes[source_idx]), float(y_nodes[target_idx]), None])
+                if "hoverinfo" in conn:
+                    undirected_hover[undirected_seg_idx] = conn["hoverinfo"]
+                undirected_seg_idx += 1
 
     # --- directed edges ("directed_connections") ---
-    # Collect (source_id, target_id) pairs
+    # Collect (source_id, target_id, hoverinfo) tuples
     directed_edges: list[tuple] = []
     for source_id, attributes in validated_data.items():
-        for target_id in attributes.get("directed_connections", []):
+        for conn in attributes.get("directed_connections", []):
+            target_id = conn["target"]
+            hover = conn.get("hoverinfo")
             if target_id in id_to_index:
-                directed_edges.append((source_id, target_id))
+                directed_edges.append((source_id, target_id, hover))
 
     COLOR_DEFAULT = "lightblue"
     COLOR_SPECIAL = "firebrick"
     COLOR_DIRECTED = "green"
 
     node_labels: list[str] = []
+    node_hover: list[str] = []
     node_colors: list[str] = []
     node_border_widths: list[int] = []
     node_border_colors: list[str] = []
     for nid in node_ids:
         attr = validated_data[nid]
         node_labels.append(attr["name"])
+        node_hover.append(attr.get("hoverinfo", attr["name"]))
         node_colors.append(COLOR_SPECIAL if attr.get("special", False) else COLOR_DEFAULT)
         if attr.get("special1", False):
             node_border_widths.append(4)
@@ -159,10 +179,21 @@ def make_prices_circular_network_widget(
             node_border_widths.append(2)
             node_border_colors.append("white")
 
+    # Build per-point hover text for undirected edges.
+    # Each segment is 3 values (start, end, None); apply hover to start & end.
+    edge_hovertext: list[str | None] = [None] * len(edge_x)
+    for seg_i, hover_txt in undirected_hover.items():
+        base = seg_i * 3
+        if base + 1 < len(edge_hovertext):
+            edge_hovertext[base] = hover_txt
+            edge_hovertext[base + 1] = hover_txt
+
+    has_edge_hover = bool(undirected_hover)
     edge_trace = go.Scatter(
         x=edge_x, y=edge_y,
         line=dict(width=1, color="#888"),
-        hoverinfo="none",
+        hoverinfo="text" if has_edge_hover else "none",
+        hovertext=edge_hovertext if has_edge_hover else None,
         mode="lines",
     )
 
@@ -172,6 +203,7 @@ def make_prices_circular_network_widget(
         text=node_labels,
         textposition="top center",
         hoverinfo="text",
+        hovertext=node_hover,
         marker=dict(
             color=node_colors,
             size=node_size,
@@ -236,11 +268,13 @@ def make_prices_circular_network_widget(
         if len(lx) < 3:
             continue
 
+        loop_hover = validated_data[nid].get("special2_hoverinfo")
         fig.add_trace(go.Scatter(
             x=lx.tolist(), y=ly.tolist(),
             mode="lines",
             line=dict(width=1.5, color=COLOR_DIRECTED),
-            hoverinfo="none",
+            hoverinfo="text" if loop_hover else "none",
+            hovertext=loop_hover,
             showlegend=False,
         ))
 
@@ -274,7 +308,7 @@ def make_prices_circular_network_widget(
     n_curve_pts = 60
     curve_bow = 0.08 * radius  # how far the arc bows away from the straight line
 
-    for src_id, tgt_id in directed_edges:
+    for src_id, tgt_id, dir_hover in directed_edges:
         src_idx = id_to_index[src_id]
         tgt_idx = id_to_index[tgt_id]
         sx, sy = float(x_nodes[src_idx]), float(y_nodes[src_idx])
@@ -316,7 +350,8 @@ def make_prices_circular_network_widget(
             x=bx.tolist(), y=by.tolist(),
             mode="lines",
             line=dict(width=1.5, color=COLOR_DIRECTED),
-            hoverinfo="none",
+            hoverinfo="text" if dir_hover else "none",
+            hovertext=dir_hover,
             showlegend=False,
         ))
 
