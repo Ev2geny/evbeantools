@@ -82,7 +82,7 @@ def make_prices_circular_network_widget(
     label_normal: str = "Normal node",
     label_special: str = "Special node",
     label_special1: str = "Special1 node (thick border)",
-    label_special2: str = "Special2 node (inner dot)",
+    label_special2: str = "Special2 node (self-loop)",
     label_undirected: str = "Non-directional connection",
     label_directed: str = "Directed connection",
 ) -> Widget:
@@ -192,31 +192,59 @@ def make_prices_circular_network_widget(
         ),
     )
 
-    # --- black dot overlay for "special2" nodes ---
-    dot_x = [float(x_nodes[id_to_index[nid]]) for nid in node_ids
-             if validated_data[nid].get("special2", False)]
-    dot_y = [float(y_nodes[id_to_index[nid]]) for nid in node_ids
-             if validated_data[nid].get("special2", False)]
-    if dot_x:
-        fig.add_trace(go.Scatter(
-            x=dot_x, y=dot_y,
-            mode="markers",
-            hoverinfo="none",
-            showlegend=False,
-            marker=dict(color="black", size=node_size * 0.35,
-                        line=dict(width=0)),
-        ))
-
-    # --- add curved arrows for directed edges ---
-    n_curve_pts = 60
-    curve_bow = 0.15 * radius  # how far the arc bows away from the straight line
-
     # Approximate node marker radius in data-space units.
     # Default Plotly figure = 700 px wide, margins l=5 r=5 → plot area ~690 px.
     # The plot spans from -radius to +radius → 2·radius data units = 690 px.
     # marker radius in px = node_size/2, convert to data units, with a 1.15×
     # safety factor so the curve visibly clears the circle edge.
     node_data_radius = (node_size / 2) * (2 * radius / 690) * 1.15
+
+    # --- self-loop for "special2" nodes (outer side of the virtual circuit) ---
+    loop_radius = 0.1 * radius
+    n_loop_pts = 80
+
+    for nid in node_ids:
+        if not validated_data[nid].get("special2", False):
+            continue
+        idx = id_to_index[nid]
+        nx, ny = float(x_nodes[idx]), float(y_nodes[idx])
+        node_angle = angles[idx]
+
+        # Outward direction (from centre to node)
+        ox, oy = np.cos(node_angle), np.sin(node_angle)
+
+        # Centre of the loop circle, placed on the outer side of the node
+        cx = nx + loop_radius * ox
+        cy = ny + loop_radius * oy
+
+        # Parametrise starting from the direction closest to the node so
+        # that after trimming the remaining points form a single contiguous arc.
+        inward_angle = node_angle + np.pi
+        t = np.linspace(inward_angle, inward_angle + 2 * np.pi,
+                        n_loop_pts, endpoint=False)
+        lx = cx + loop_radius * np.cos(t)
+        ly = cy + loop_radius * np.sin(t)
+
+        # Trim points that fall inside the node marker
+        dist_from_node = np.sqrt((lx - nx)**2 + (ly - ny)**2)
+        keep = dist_from_node >= node_data_radius
+        lx = lx[keep]
+        ly = ly[keep]
+
+        if len(lx) < 3:
+            continue
+
+        fig.add_trace(go.Scatter(
+            x=lx.tolist(), y=ly.tolist(),
+            mode="lines",
+            line=dict(width=1.5, color=COLOR_DIRECTED),
+            hoverinfo="none",
+            showlegend=False,
+        ))
+
+    # --- add curved arrows for directed edges ---
+    n_curve_pts = 60
+    curve_bow = 0.15 * radius  # how far the arc bows away from the straight line
 
     for src_id, tgt_id in directed_edges:
         src_idx = id_to_index[src_id]
@@ -318,10 +346,11 @@ def make_prices_circular_network_widget(
         {label_special1}
       </div>
       <div style="display:flex; align-items:center; gap:6px;">
-        <span style="display:inline-block; width:18px; height:18px; border-radius:50%;
-                     background:{COLOR_DEFAULT}; border:2px solid white; position:relative;">
-          <span style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-                       width:7px; height:7px; border-radius:50%; background:black;"></span>
+        <span style="display:inline-block; width:24px; height:30px;">
+          <svg viewBox="0 0 24 30" width="24" height="30" style="display:block;">
+            <circle cx="12" cy="20" r="8" fill="{COLOR_DEFAULT}" stroke="white" stroke-width="1.5"/>
+            <path d="M8,14 C4,0 20,0 16,14" fill="none" stroke="{COLOR_DIRECTED}" stroke-width="1.5"/>
+          </svg>
         </span>
         {label_special2}
       </div>
