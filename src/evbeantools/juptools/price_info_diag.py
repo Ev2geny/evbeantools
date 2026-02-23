@@ -272,7 +272,7 @@ def make_prices_circular_network_widget(
 
     # --- add curved arrows for directed edges ---
     n_curve_pts = 60
-    curve_bow = 0.15 * radius  # how far the arc bows away from the straight line
+    curve_bow = 0.08 * radius  # how far the arc bows away from the straight line
 
     for src_id, tgt_id in directed_edges:
         src_idx = id_to_index[src_id]
