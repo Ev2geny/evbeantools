@@ -130,23 +130,37 @@ def make_prices_circular_network_widget(
     y_nodes = radius * np.sin(angles)
 
     # --- undirected edges ("connections") ---
-    edge_x: list[float | None] = []
-    edge_y: list[float | None] = []
-    # Build per-segment hover lookup: segment index → hover text
-    undirected_hover: dict[int, str] = {}
-    undirected_seg_idx = 0
-
+    # Deduplicate: each pair (A,B) is drawn once.  If both sides carry
+    # hoverinfo the texts are joined with " | ".
+    seen_pairs: dict[tuple, str | None] = {}   # (min_id, max_id) → merged hover
     for source_id, attributes in validated_data.items():
-        source_idx = id_to_index[source_id]
         for conn in attributes["connections"]:
             target_id = conn["target"]
-            if target_id in id_to_index:
-                target_idx = id_to_index[target_id]
-                edge_x.extend([float(x_nodes[source_idx]), float(x_nodes[target_idx]), None])
-                edge_y.extend([float(y_nodes[source_idx]), float(y_nodes[target_idx]), None])
-                if "hoverinfo" in conn:
-                    undirected_hover[undirected_seg_idx] = conn["hoverinfo"]
-                undirected_seg_idx += 1
+            if target_id not in id_to_index:
+                continue
+            pair_key = (min(source_id, target_id), max(source_id, target_id))
+            hover = conn.get("hoverinfo")
+            if pair_key not in seen_pairs:
+                seen_pairs[pair_key] = hover
+            elif hover is not None:
+                prev = seen_pairs[pair_key]
+                seen_pairs[pair_key] = f"{prev} | {hover}" if prev else hover
+
+    # Split into edges without hover (batched) and edges with hover
+    # (individual traces so Plotly can show tooltips).
+    edge_x: list[float | None] = []
+    edge_y: list[float | None] = []
+    hover_edges: list[tuple[float, float, float, float, str]] = []  # sx,sy,tx,ty,text
+
+    for (a, b), hover in seen_pairs.items():
+        a_idx, b_idx = id_to_index[a], id_to_index[b]
+        sx, sy = float(x_nodes[a_idx]), float(y_nodes[a_idx])
+        tx, ty = float(x_nodes[b_idx]), float(y_nodes[b_idx])
+        if hover:
+            hover_edges.append((sx, sy, tx, ty, hover))
+        else:
+            edge_x.extend([sx, tx, None])
+            edge_y.extend([sy, ty, None])
 
     # --- directed edges ("directed_connections") ---
     # Collect (source_id, target_id, hoverinfo) tuples
@@ -179,21 +193,10 @@ def make_prices_circular_network_widget(
             node_border_widths.append(2)
             node_border_colors.append("white")
 
-    # Build per-point hover text for undirected edges.
-    # Each segment is 3 values (start, end, None); apply hover to start & end.
-    edge_hovertext: list[str | None] = [None] * len(edge_x)
-    for seg_i, hover_txt in undirected_hover.items():
-        base = seg_i * 3
-        if base + 1 < len(edge_hovertext):
-            edge_hovertext[base] = hover_txt
-            edge_hovertext[base + 1] = hover_txt
-
-    has_edge_hover = bool(undirected_hover)
     edge_trace = go.Scatter(
         x=edge_x, y=edge_y,
         line=dict(width=1, color="#888"),
-        hoverinfo="text" if has_edge_hover else "none",
-        hovertext=edge_hovertext if has_edge_hover else None,
+        hoverinfo="none",
         mode="lines",
     )
 
@@ -223,6 +226,20 @@ def make_prices_circular_network_widget(
             plot_bgcolor="white",
         ),
     )
+
+    # --- undirected edges with hover: each as a separate trace with
+    #     an invisible midpoint marker so Plotly shows the tooltip ---
+    for sx, sy, tx, ty, hover_txt in hover_edges:
+        mx, my = (sx + tx) / 2, (sy + ty) / 2
+        fig.add_trace(go.Scatter(
+            x=[sx, mx, tx], y=[sy, my, ty],
+            mode="lines+markers",
+            line=dict(width=1, color="#888"),
+            marker=dict(size=[0, 8, 0], color="rgba(0,0,0,0)"),
+            hoverinfo="text",
+            hovertext=[None, hover_txt, None],
+            showlegend=False,
+        ))
 
     # Approximate node marker radius in data-space units.
     # Default Plotly figure = 700 px wide, margins l=5 r=5 → plot area ~690 px.
@@ -306,7 +323,7 @@ def make_prices_circular_network_widget(
 
     # --- add curved arrows for directed edges ---
     n_curve_pts = 60
-    curve_bow = 0.08 * radius  # how far the arc bows away from the straight line
+    curve_bow = 0.1 * radius  # how far the arc bows away from the straight line
 
     for src_id, tgt_id, dir_hover in directed_edges:
         src_idx = id_to_index[src_id]
