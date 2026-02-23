@@ -214,8 +214,24 @@ def make_prices_circular_network_widget(
         ),
     )
 
+    # --- undirected edges with hover: each as a separate trace with
+    #     an invisible midpoint marker so Plotly shows the tooltip.
+    #     Built before the node trace so nodes render on top. ---
+    hover_edge_traces: list[go.Scatter] = []
+    for sx, sy, tx, ty, hover_txt in hover_edges:
+        mx, my = (sx + tx) / 2, (sy + ty) / 2
+        hover_edge_traces.append(go.Scatter(
+            x=[sx, mx, tx], y=[sy, my, ty],
+            mode="lines+markers",
+            line=dict(width=1, color="#888"),
+            marker=dict(size=[0, 8, 0], color="rgba(0,0,0,0)"),
+            hoverinfo="text",
+            hovertext=[None, hover_txt, None],
+            showlegend=False,
+        ))
+
     fig = go.Figure(
-        data=[edge_trace, node_trace],
+        data=[edge_trace] + hover_edge_traces + [node_trace],
         layout=go.Layout(
             title="Currency Price Map Network",
             showlegend=False,
@@ -226,20 +242,6 @@ def make_prices_circular_network_widget(
             plot_bgcolor="white",
         ),
     )
-
-    # --- undirected edges with hover: each as a separate trace with
-    #     an invisible midpoint marker so Plotly shows the tooltip ---
-    for sx, sy, tx, ty, hover_txt in hover_edges:
-        mx, my = (sx + tx) / 2, (sy + ty) / 2
-        fig.add_trace(go.Scatter(
-            x=[sx, mx, tx], y=[sy, my, ty],
-            mode="lines+markers",
-            line=dict(width=1, color="#888"),
-            marker=dict(size=[0, 8, 0], color="rgba(0,0,0,0)"),
-            hoverinfo="text",
-            hovertext=[None, hover_txt, None],
-            showlegend=False,
-        ))
 
     # Approximate node marker radius in data-space units.
     # Default Plotly figure = 700 px wide, margins l=5 r=5 → plot area ~690 px.
