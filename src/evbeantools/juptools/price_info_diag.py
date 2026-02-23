@@ -334,8 +334,8 @@ def make_prices_circular_network_widget(
             axref="x", ayref="y",
             showarrow=True,
             arrowhead=3,
-            arrowsize=2,
-            arrowwidth=2,
+            arrowsize=1.5,
+            arrowwidth=1.5,
             arrowcolor=COLOR_DIRECTED,
             standoff=0,
         )
