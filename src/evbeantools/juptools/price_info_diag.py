@@ -30,21 +30,21 @@ def get_posting_currencies(entries) -> set[str]:
 
 
 commodities_network_data_schema = Schema({
-        Or(str, int): {
+        Or(str, int): {                           # unique node ID can be string or int
             "name": str,
-            "connections": [{
-                "target": Or(str, int),
+            Optional("connections"): [{
+                "target": Or(str, int),           # target node ID
                 Optional("hoverinfo"): str,
             }],
             Optional("directed_connections"): [{
-                "target": Or(str, int),
+                "target": Or(str, int),           # target node ID
                 Optional("hoverinfo"): str,
             }],
-            Optional("special"): bool,
-            Optional("special1"): bool,
-            Optional("special2"): bool,
-            Optional("hoverinfo"): str,
-            Optional("special2_hoverinfo"): str,
+            Optional("special"): bool,           # this node will be marked specially
+            Optional("special1"): bool,          # this node will be marked specially1 (different from "special" for legend purposes)
+            Optional("special2"): bool,          # this node will be marked specially2 (different from "special" and "special1" for legend purposes)
+            Optional("hoverinfo"): str,          # hover text for the node
+            Optional("special2_hoverinfo"): str, # hover text for the special2 marker (e.g. self-loop) if special2 is True
         }
     })
 
@@ -134,7 +134,7 @@ def make_prices_circular_network_widget(
     # hoverinfo the texts are joined with " | ".
     seen_pairs: dict[tuple, str | None] = {}   # (min_id, max_id) → merged hover
     for source_id, attributes in validated_data.items():
-        for conn in attributes["connections"]:
+        for conn in attributes.get("connections", []):
             target_id = conn["target"]
             if target_id not in id_to_index:
                 continue
