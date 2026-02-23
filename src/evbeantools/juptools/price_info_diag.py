@@ -194,13 +194,15 @@ def make_prices_circular_network_widget(
 
     # Approximate node marker radius in data-space units.
     # Default Plotly figure = 700 px wide, margins l=5 r=5 → plot area ~690 px.
-    # The plot spans from -radius to +radius → 2·radius data units = 690 px.
-    # marker radius in px = node_size/2, convert to data units, with a 1.15×
-    # safety factor so the curve visibly clears the circle edge.
-    node_data_radius = (node_size / 2) * (2 * radius / 690) * 1.15
+    # The data range extends from roughly -(radius + 2*loop_radius) to
+    # +(radius + 2*loop_radius) because self-loops stick out beyond the
+    # circular layout.  Using the full visible span keeps arcs from
+    # penetrating node circles when the plot auto-scales.
+    loop_radius = 0.15 * radius
+    data_span = 2 * (radius + 2 * loop_radius)
+    node_data_radius = (node_size / 2) * (data_span / 690) * 1.35
 
     # --- self-loop for "special2" nodes (outer side of the virtual circuit) ---
-    loop_radius = 0.15 * radius
     n_loop_pts = 80
 
     for nid in node_ids:
