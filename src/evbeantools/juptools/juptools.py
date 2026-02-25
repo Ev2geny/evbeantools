@@ -16,6 +16,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from beancount.core.prices import PriceMap, build_price_map
+from beancount.api import Transaction
 
 from beanquery.query import run_query
 
@@ -471,29 +472,49 @@ def _get_net_worths_per_commodity(entries, opts, dates: Iterable, target_currenc
     return result_pivot_df
         
 
-def get_net_worths_per_commodity(entries, opts,                      
-                                 freq,
+def get_net_worths_per_commodity(entries: list,
+                                 opts: list,                 
+                                 freq: str,
                                  start_period: pd.Period | None = None,
-                                 qnt_periods=None,
-                                 end_period:pd.Period | None = None,
-                                 currency = None) -> pd.DataFrame:
+                                 qnt_periods: int | None = None,
+                                 end_period: pd.Period | None = None,
+                                 currency: str | None = None) -> pd.DataFrame:
+    """Gets net worths per commodity for the last date of a series of periods.
+
+    Returns a DataFrame where columns are periods and rows are commodities.
+
+    Args:
+        entries: List of entries, as returned by beancount ``load_file`` or
+            ``load_string`` functions.
+        opts: List of options, as returned by beancount ``load_file`` or
+            ``load_string`` functions.
+        freq: Frequency of the periods as defined in Pandas (e.g. ``'M'`` for
+            month, ``'Y'`` for year).
+        start_period: Start period. If not specified, the first period is
+            defined by the date of the first transaction in *entries*.
+        qnt_periods: Number of periods. If specified, *end_period* is computed
+            as ``start_period + qnt_periods - 1`` (the *end_period* argument
+            is ignored in this case).
+        end_period: End period. Ignored when *qnt_periods* is specified. If
+            not specified, the end period is defined by the date of the last
+            transaction in *entries*.
+        currency: Target currency. If specified, the function attempts to convert all net
+            worths to this currency using a price map built from *entries*.
+            Conversion is done with the exchange rate of the last date of the period for the date of the period. 
+            If conversion is not possible for a given commodity, it is returned in its original form.
+            If not specified, net worths are returned in their original
+            commodities without conversion.
+
+    Returns:
+        A DataFrame with commodities as rows and periods as columns,
+        containing the net worth amounts.
     """
-    Function to get net worths per commodity for a last date of the series of periods.
-    Returns a dataframe where columns are periods and rows are commodities.
     
-    Parameters:
-        entries: list of entries
-        opts: options
-        freq: frequency of the periods as defined in Pandas (e.g. 'M' for month, 'Y' for year)
-        start_period: start period (optional)
-        qnt_periods: number of periods (optional)
-        end_period: end period (optional)
-        currency: target currency (optional)
-    
-    """
+    # The list of transactions only is needed to find the first and the last date 
+    transactions_only = [entry for entry in entries if isinstance(entry, Transaction)]
     
     if not start_period:
-        start_period = pd.Period(entries[0].date, freq)
+        start_period = pd.Period(transactions_only[0].date, freq)
     else:
         start_period = pd.Period(start_period, freq)
 
@@ -501,7 +522,7 @@ def get_net_worths_per_commodity(entries, opts,
         end_period = start_period + qnt_periods - 1
     else:
         if not end_period:
-            end_period = pd.Period(entries[-1].date, freq)
+            end_period = pd.Period(transactions_only[-1].date, freq)
         else:
             end_period = pd.Period(end_period, freq)
 
