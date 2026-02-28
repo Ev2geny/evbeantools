@@ -393,7 +393,11 @@ def get_bean_pivot(df,
     return df_pivot
 
     
-def get_net_worths(entries, opts, dates: Iterable, target_currency: str, num_acc_components_from_root: int = 100, repeat_row_labels = True) -> pd.DataFrame:
+def get_net_worths(entries, opts, 
+                   dates: Iterable, 
+                   target_currency: str, 
+                   num_acc_components_from_root: int = 100, 
+                   repeat_row_labels = True) -> pd.DataFrame:
     
     # print("get_net_worths is running")
     
@@ -490,12 +494,14 @@ def get_net_worths_per_commodity(entries: list,
             ``load_string`` functions.
         freq: Frequency of the periods as defined in Pandas (e.g. ``'M'`` for
             month, ``'Y'`` for year).
-        start_period: Start period. If not specified, the first period is
+        start_period: Period, str, datetime, date or pandas.Timestamp 
+            Start period. If not specified, the first period is
             defined by the date of the first transaction in *entries*.
         qnt_periods: Number of periods. If specified, *end_period* is computed
             as ``start_period + qnt_periods - 1`` (the *end_period* argument
             is ignored in this case).
-        end_period: End period. Ignored when *qnt_periods* is specified. If
+        end_period: Period, str, datetime, date or pandas.Timestamp
+            End period. Ignored when *qnt_periods* is specified. If
             not specified, the end period is defined by the date of the last
             transaction in *entries*.
         currency: Target currency. If specified, the function attempts to convert all net

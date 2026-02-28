@@ -112,7 +112,7 @@ def make_prices_circular_network_widget(
      """
     BASE_DIM = 600  # base figure dimension in pixels; multiplied by `radius`
     
-    pprint(graph_data)
+    # pprint(graph_data)
     
     global commodities_network_data_schema 
 
