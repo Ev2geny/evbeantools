@@ -45,6 +45,6 @@ The tool can be used
 
 * from a command line
 * as a function in Python code
-* as a plugin
+* as a plugin. (E.g. see [example](https://github.com/beancount/fava/issues/1751#issuecomment-4076570180) of its usage with Fava)
 
 See more information in the [**sing_curr_conv** documentation](docs/sing_curr_conv.md).
